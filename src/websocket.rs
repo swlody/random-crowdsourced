@@ -49,9 +49,7 @@ async fn handle_socket(socket: WebSocket, who: SocketAddr, state: AppState) {
             let msg = msg.into_text().unwrap();
 
             if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&msg) {
-                if let Some(Ok(random_number)) =
-                    msg["random_number"].as_str().map(|s| s.parse::<i64>())
-                {
+                if let Some(Ok(random_number)) = msg["random_number"].as_str().map(str::parse) {
                     tracing::debug!("Parsed message as i64, sending: {}", random_number);
                     state.tx.send(random_number).await.unwrap();
                 } else {
