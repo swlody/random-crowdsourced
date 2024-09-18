@@ -1,0 +1,5 @@
+fly.toml
+.git/
+target/
+.env.local
+.rustfmt.toml
