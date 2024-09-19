@@ -1,12 +1,7 @@
 mod api;
 mod layers;
-mod state;
-mod websocket;
 
-use std::{
-    net::SocketAddr,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::net::SocketAddr;
 
 use anyhow::Result;
 use axum::{serve, Router};
@@ -17,33 +12,26 @@ use tower_http::services::{ServeDir, ServeFile};
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::state::AppState;
-
 async fn run() -> Result<()> {
     // Initialize tracing subscribe
     tracing_subscriber::fmt()
         .with_target(true)
-        .with_max_level(Level::DEBUG)
+        .with_max_level(Level::INFO)
         .finish()
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    let (tx, rx) = async_channel::unbounded();
+    let client = redis::Client::open(format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?))?;
 
     // Initialize routes
     let app = Router::new()
         .route_service("/", ServeFile::new("static/index.html"))
         .nest("/api", api::routes())
-        .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("static"))
         .fallback_service(ServeFile::new("/static/404.html"))
         .with_sentry_layer()
         .with_tracing_layer()
-        .with_state(AppState {
-            tx,
-            rx,
-            waiting_calls: Arc::new(AtomicUsize::new(0)),
-        });
+        .with_state(client);
 
     // Listen and serve
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
