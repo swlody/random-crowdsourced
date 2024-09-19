@@ -11,7 +11,12 @@
 <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/json-enc.js"></script>
 
 <main>
-  <form id="entry-form" hx-post="api/submit" hx-ext="json-enc" hx-swap="none">
+  <form
+    id="entry-form"
+    hx-post="api/submit_random"
+    hx-ext="json-enc"
+    hx-swap="none"
+  >
     <input
       name="random_number"
       type="number"
