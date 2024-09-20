@@ -21,6 +21,7 @@ async fn run() -> Result<()> {
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
+    // TODO connection pooling with feature: r2d2 and r2d2 crate
     let client = redis::Client::open(format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?))?;
 
     // Initialize routes

@@ -68,9 +68,9 @@ where
     }
 }
 
-impl<State> AddLayers<State> for Router<State>
+impl<T> AddLayers<T> for Router<T>
 where
-    State: Clone + Send + Sync + 'static,
+    T: Clone + Send + Sync + 'static,
 {
     fn with_tracing_layer(self) -> Self {
         // Enables tracing for each request and adds a request ID header to resposne

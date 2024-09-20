@@ -1,5 +1,3 @@
-use core::panic;
-
 use axum::{
     body::Body,
     extract::State,
@@ -8,7 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use redis::AsyncCommands;
+use redis::AsyncCommands as _;
 use serde::Deserialize;
 use uuid::Uuid;
 
@@ -22,17 +20,11 @@ async fn submit_random(
     State(redis): State<redis::Client>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> impl IntoResponse {
-    tracing::info!("Getting connection");
     let mut conn = redis.get_multiplexed_async_connection().await.unwrap();
 
-    tracing::info!("Getting guid");
     let guid: Option<Uuid> = conn.rpop("callbacks", None).await.unwrap();
-
     if let Some(guid) = guid {
-        tracing::info!("Got guid {guid}, publishing number");
         let _: () = conn.publish(guid, random_number).await.unwrap();
-    } else {
-        tracing::info!("No guid found");
     }
 
     (StatusCode::OK, Body::empty())
@@ -50,22 +42,16 @@ async fn get_random(State(redis): State<redis::Client>) -> impl IntoResponse {
         .unwrap();
 
     conn.subscribe(guid).await.unwrap();
+    rx.recv().await.unwrap();
 
-    let confirmation = format!("{:?}", rx.recv().await.unwrap().data);
-    tracing::info!("Got confirmation: {confirmation:?}");
-
+    // TODO proper error handling
     let _: () = conn.lpush("callbacks", guid).await.unwrap();
 
-    let random_number = rx.recv().await.unwrap().data;
-    tracing::info!("Got random number: {random_number:?}");
-    let redis::Value::BulkString(random_number) = &random_number[1] else {
-        panic!("Not a bulk string")
-    };
+    // TODO we "need" to remove the callback if the request is cancelled by the user
 
-    (
-        StatusCode::OK,
-        std::str::from_utf8(random_number).unwrap().to_owned(),
-    )
+    let random_number = redis::Msg::from_push_info(rx.recv().await.unwrap()).unwrap();
+
+    (StatusCode::OK, random_number.get_payload_bytes().to_owned())
 }
 
 pub fn routes() -> Router<redis::Client> {
