@@ -1,5 +1,8 @@
 mod api;
 mod layers;
+mod message;
+mod site;
+mod websocket;
 
 use std::net::SocketAddr;
 
@@ -21,14 +24,15 @@ async fn run() -> Result<()> {
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    // TODO connection pooling with feature: r2d2 and r2d2 crate
+    // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redis/
     let client = redis::Client::open(format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?))?;
 
     // Initialize routes
     let app = Router::new()
-        .route_service("/", ServeFile::new("static/index.html"))
+        .nest("/", site::routes())
         .nest("/api", api::routes())
-        .nest_service("/static", ServeDir::new("static"))
+        .nest("/ws", websocket::routes())
+        .nest_service("/static", ServeDir::new("assets/static"))
         .fallback_service(ServeFile::new("/static/404.html"))
         .with_sentry_layer()
         .with_tracing_layer()
@@ -36,6 +40,7 @@ async fn run() -> Result<()> {
 
     // Listen and serve
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
+    tracing::info!("Listening on {}", listener.local_addr()?);
     serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),

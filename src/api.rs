@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use axum::{
     body::Body,
     extract::State,
@@ -8,7 +10,10 @@ use axum::{
 };
 use redis::AsyncCommands as _;
 use serde::Deserialize;
+use tokio::time::timeout;
 use uuid::Uuid;
+
+use crate::message::StateUpdate;
 
 #[derive(Deserialize, Debug)]
 struct SubmitParams {
@@ -25,6 +30,14 @@ async fn submit_random(
     let guid: Option<Uuid> = conn.rpop("callbacks", None).await.unwrap();
     if let Some(guid) = guid {
         let _: () = conn.publish(guid, random_number).await.unwrap();
+
+        let _: () = conn
+            .publish(
+                "state_updates",
+                serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+            )
+            .await
+            .unwrap();
     }
 
     (StatusCode::OK, Body::empty())
@@ -46,12 +59,36 @@ async fn get_random(State(redis): State<redis::Client>) -> impl IntoResponse {
 
     // TODO proper error handling
     let _: () = conn.lpush("callbacks", guid).await.unwrap();
+    let _: () = conn
+        .publish(
+            "state_updates",
+            serde_json::to_string(&StateUpdate::Added(guid)).unwrap(),
+        )
+        .await
+        .unwrap();
 
-    // TODO we "need" to remove the callback if the request is cancelled by the user
+    loop {
+        if let Ok(res) = timeout(Duration::from_secs(30), rx.recv()).await {
+            let res = res.unwrap();
 
-    let random_number = redis::Msg::from_push_info(rx.recv().await.unwrap()).unwrap();
+            if res.kind == redis::PushKind::Message {
+                let random_number = redis::Msg::from_push_info(res).unwrap();
+                return (StatusCode::OK, random_number.get_payload_bytes().to_owned());
+            }
+        } else {
+            let _: () = conn.lrem("callbacks", 1, guid).await.unwrap();
 
-    (StatusCode::OK, random_number.get_payload_bytes().to_owned())
+            let _: () = conn
+                .publish(
+                    "state_updates",
+                    serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+                )
+                .await
+                .unwrap();
+            // TODO return with Connection::close header in response
+            return (StatusCode::REQUEST_TIMEOUT, vec![]);
+        }
+    }
 }
 
 pub fn routes() -> Router<redis::Client> {

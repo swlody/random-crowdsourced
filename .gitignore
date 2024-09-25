@@ -1,2 +1,3 @@
-/target
+assets/node_modules/
+target/
 .env.local

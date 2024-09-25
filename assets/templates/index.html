@@ -1,14 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <title>Crowdsourced Random Number</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <link rel="stylesheet" href="/static/style.css" />
 
-<script
-  src="https://unpkg.com/htmx.org@1.9.12"
-  integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2"
-  crossorigin="anonymous"
-></script>
-<script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/json-enc.js"></script>
+<script src="https://unpkg.com/htmx.org@2.0.1/dist/htmx.js"></script>
+<script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
+<script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
 
 <main>
   <form
@@ -27,4 +24,14 @@
     />
     <button type="submit">Send random number</button>
   </form>
+
+  <div hx-ext="ws" ws-connect="/ws">
+    {% block list %}
+      <div id="list" hx-swap-oob="outerHTML">
+        {% for client in pending_requests %}
+          <li>{{ client }}</li>
+        {% endfor %}
+      </div>
+    {% endblock %}
+  </div>
 </main>

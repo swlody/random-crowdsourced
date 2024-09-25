@@ -5,9 +5,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.89"
+askama = { git = "https://github.com/djc/askama", features = ["with-axum"] }
+askama-axum = { git = "https://github.com/djc/askama", package = "askama_axum" }
 axum = { version = "0.7.5", features = ["macros", "ws"] }
 futures-util = "0.3.30"
-redis = { version = "0.27.2", features = ["tokio-comp", "uuid"] }
+redis = { version = "0.27.2", features = ["r2d2", "tokio-comp", "uuid"] }
 rubenvy = "0.1.1"
 secrecy = "0.8.0"
 sentry = { version = "0.34.0", default-features = false, features = [
@@ -24,7 +26,7 @@ sentry = { version = "0.34.0", default-features = false, features = [
 ] }
 serde = "1.0.210"
 serde_json = "1.0.128"
-tokio = { version = "1.40.0", features = ["full"] }
+tokio = { version = "1.40.0", features = ["full", "time"] }
 tower = "0.4.3"
 tower-http = { version = "0.5.2", features = [
     "fs",
