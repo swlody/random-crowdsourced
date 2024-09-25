@@ -47,11 +47,14 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, mut redis: redis:
 
             match update {
                 StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
+                    // TODO using client directly vs getting (using existing?) connection
                     let pending_requests: Vec<Uuid> = redis.lrange("callbacks", 0, -1).unwrap();
-                    socket
+                    let res = socket
                         .send(ListFragment { pending_requests }.render().unwrap().into())
-                        .await
-                        .unwrap();
+                        .await;
+                    if let Err(e) = res {
+                        tracing::debug!("Error sending websocket message: {e:?}");
+                    }
                 }
             }
         }
