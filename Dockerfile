@@ -18,6 +18,6 @@ FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/random-crowdsourced /usr/local/bin
 
-COPY static/ /app/static
+COPY assets/static/ /app/assets/static
 
 ENTRYPOINT ["/usr/local/bin/random-crowdsourced"]
