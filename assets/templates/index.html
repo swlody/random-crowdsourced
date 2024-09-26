@@ -1,17 +1,12 @@
 {% extends "layout.html" %}
 
 {% block main %}
-  <form
-    id="entry-form"
-    hx-post="api/submit_random"
-    hx-ext="json-enc"
-    hx-swap="none"
-  >
+  <form id="entry-form" hx-post="api/submit" hx-ext="json-enc" hx-swap="none">
     <input name="random_number" type="number" />
     <button type="submit">Send random number</button>
   </form>
 
-  <p><code>curl {{ host }}/api/get_random</code> for a random number.</p>
+  <p><code>curl -L {{ host }}/api/get</code> for a random number.</p>
 
   <div id="waitlist" hx-ext="ws" ws-connect="/ws">
     {% block list %}

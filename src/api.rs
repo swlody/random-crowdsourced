@@ -95,6 +95,6 @@ async fn get_random(State(redis): State<redis::Client>) -> impl IntoResponse {
 
 pub fn routes() -> Router<redis::Client> {
     Router::new()
-        .route("/get_random", get(get_random))
-        .route("/submit_random", post(submit_random))
+        .route("/get", get(get_random))
+        .route("/submit", post(submit_random))
 }
