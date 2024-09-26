@@ -74,7 +74,13 @@ async fn get_random(headers: HeaderMap, State(redis): State<redis::Client>) -> i
 
             if res.kind == redis::PushKind::Message {
                 let random_number = redis::Msg::from_push_info(res).unwrap();
-                return (StatusCode::OK, random_number.get_payload_bytes().to_owned());
+                return (
+                    StatusCode::OK,
+                    format!(
+                        "{}\n",
+                        std::str::from_utf8(random_number.get_payload_bytes()).unwrap()
+                    ),
+                );
             }
         } else {
             let _: () = conn.lrem("callbacks", 1, guid).await.unwrap();
@@ -88,7 +94,7 @@ async fn get_random(headers: HeaderMap, State(redis): State<redis::Client>) -> i
                 .unwrap();
 
             // TODO return with Connection::close header in response
-            return (StatusCode::REQUEST_TIMEOUT, vec![]);
+            return (StatusCode::REQUEST_TIMEOUT, String::new());
         }
     }
 }
