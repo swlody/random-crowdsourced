@@ -3,7 +3,7 @@ use std::time::Duration;
 use axum::{
     body::Body,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -45,8 +45,8 @@ async fn submit_random(
 }
 
 #[tracing::instrument]
-async fn get_random(State(redis): State<redis::Client>) -> impl IntoResponse {
-    let guid = Uuid::now_v7();
+async fn get_random(headers: HeaderMap, State(redis): State<redis::Client>) -> impl IntoResponse {
+    let guid = Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).unwrap();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
