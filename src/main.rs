@@ -7,13 +7,22 @@ mod websocket;
 use std::net::SocketAddr;
 
 use anyhow::Result;
-use axum::{serve, Router};
+use askama::Template;
+use axum::{response::IntoResponse, serve, Router};
 use layers::AddLayers as _;
 use secrecy::{ExposeSecret as _, SecretString};
 use tokio::net::TcpListener;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+
+async fn fallback_handler() -> impl IntoResponse {
+    #[derive(Template)]
+    #[template(path = "404.html")]
+    struct NotFoundTemplate;
+
+    NotFoundTemplate
+}
 
 async fn run() -> Result<()> {
     // Initialize tracing subscribe
@@ -33,7 +42,7 @@ async fn run() -> Result<()> {
         .nest("/api", api::routes())
         .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("assets/static"))
-        .fallback_service(ServeFile::new("/static/404.html"))
+        .fallback(fallback_handler)
         .with_sentry_layer()
         .with_tracing_layer()
         .with_state(client);
