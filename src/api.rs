@@ -29,6 +29,7 @@ async fn submit_random(
 
     let guid: Option<Uuid> = conn.rpop("callbacks", None).await.unwrap();
     if let Some(guid) = guid {
+        // TODO parse to float?
         let _: () = conn.publish(guid, random_number).await.unwrap();
 
         let _: () = conn
@@ -57,7 +58,7 @@ async fn get_random(State(redis): State<redis::Client>) -> impl IntoResponse {
     conn.subscribe(guid).await.unwrap();
     rx.recv().await.unwrap();
 
-    // TODO proper error handling
+    // TODO proper error handling - map most everything to internal server error
     let _: () = conn.lpush("callbacks", guid).await.unwrap();
     let _: () = conn
         .publish(
@@ -85,6 +86,7 @@ async fn get_random(State(redis): State<redis::Client>) -> impl IntoResponse {
                 )
                 .await
                 .unwrap();
+
             // TODO return with Connection::close header in response
             return (StatusCode::REQUEST_TIMEOUT, vec![]);
         }

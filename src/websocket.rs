@@ -38,7 +38,6 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, mut redis: redis:
 
     conn.subscribe("state_updates").await.unwrap();
 
-    // TODO how to end loop?
     while let Some(msg) = rx.recv().await {
         if msg.kind == redis::PushKind::Message {
             let msg = redis::Msg::from_push_info(msg).unwrap();
@@ -46,8 +45,10 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, mut redis: redis:
             let update: StateUpdate = serde_json::from_slice(msg).unwrap();
 
             match update {
+                // TODO do we still need separate added/removed?
                 StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                     // TODO using client directly vs getting (using existing?) connection
+                    // TODO single waiter updates instead of sending entire list every time
                     let pending_requests: Vec<Uuid> = redis.lrange("callbacks", 0, -1).unwrap();
                     let res = socket
                         .send(ListFragment { pending_requests }.render().unwrap().into())

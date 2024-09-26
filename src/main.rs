@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use anyhow::Result;
 use axum::{serve, Router};
 use layers::AddLayers as _;
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret as _, SecretString};
 use tokio::net::TcpListener;
 use tower_http::services::{ServeDir, ServeFile};
 use tracing::Level;
@@ -53,9 +53,9 @@ async fn run() -> Result<()> {
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
 
-    let dsn = Secret::new(std::env::var("SENTRY_DSN")?);
+    let dsn = SecretString::from(std::env::var("SENTRY_DSN")?);
     let _guard = sentry::init((
-        dsn.expose_secret().as_str(),
+        dsn.expose_secret(),
         sentry::ClientOptions {
             release: sentry::release_name!(),
             traces_sample_rate: 1.0,

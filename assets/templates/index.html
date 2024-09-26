@@ -7,6 +7,15 @@
 <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
 <script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
 
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Dosis:wght@200..800&display=swap"
+  rel="stylesheet"
+/>
+
+<h1>Natural Random Numbers</h1>
+
 <main>
   <form
     id="entry-form"
@@ -14,20 +23,23 @@
     hx-ext="json-enc"
     hx-swap="none"
   >
-    <input
-      name="random_number"
-      type="number"
-      onkeypress="return /[0-9]/i.test(event.key)"
-      pattern="[0-9]"
-      min="-9223372036854775808"
-      max="9223372036854775807"
-    />
+    <input name="random_number" type="number" />
     <button type="submit">Send random number</button>
   </form>
 
-  <div hx-ext="ws" ws-connect="/ws">
+  <p><code>curl {{ host }}/api/get_random</code> for a random number.</p>
+
+  <div id="waitlist" hx-ext="ws" ws-connect="/ws">
     {% block list %}
       <div id="list" hx-swap-oob="outerHTML">
+        <p>
+          {% if pending_requests.is_empty() %}
+            Nobody needs a number right now!
+          {% else %}
+            Clients waiting for a number:
+          {% endif %}
+        </p>
+
         {% for client in pending_requests %}
           <li>{{ client }}</li>
         {% endfor %}
