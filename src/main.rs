@@ -16,12 +16,24 @@ use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-async fn fallback_handler() -> impl IntoResponse {
-    #[derive(Template)]
-    #[template(path = "404.html")]
-    struct NotFoundTemplate;
+fn main() -> Result<()> {
+    rubenvy::rubenvy_auto()?;
 
-    NotFoundTemplate
+    let dsn = SecretString::from(std::env::var("SENTRY_DSN")?);
+    let _guard = sentry::init((
+        dsn.expose_secret(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            traces_sample_rate: 1.0,
+            attach_stacktrace: true,
+            ..Default::default()
+        },
+    ));
+
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
 }
 
 async fn run() -> Result<()> {
@@ -59,22 +71,10 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
-fn main() -> Result<()> {
-    rubenvy::rubenvy_auto()?;
+async fn fallback_handler() -> impl IntoResponse {
+    #[derive(Template)]
+    #[template(path = "404.html")]
+    struct NotFoundTemplate;
 
-    let dsn = SecretString::from(std::env::var("SENTRY_DSN")?);
-    let _guard = sentry::init((
-        dsn.expose_secret(),
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            traces_sample_rate: 1.0,
-            attach_stacktrace: true,
-            ..Default::default()
-        },
-    ));
-
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?
-        .block_on(run())
+    NotFoundTemplate
 }
