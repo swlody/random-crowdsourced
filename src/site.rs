@@ -50,11 +50,13 @@ async fn get_top_n(
 #[tracing::instrument]
 async fn stats(State(redis): State<redis::Client>) -> Result<Response, RrgError> {
     let conn = redis.get_multiplexed_async_connection().await?;
-    let top_n: Vec<(String, f64)> = get_top_n(conn, 10).await?;
+    let top_10: Vec<(String, f64)> = get_top_n(conn, 9).await?;
 
-    Ok(StatsTemplate { top_n }.into_response())
+    Ok(StatsTemplate { top_n: top_10 }.into_response())
 }
 
+// TODO it's a bit weird to create a new struct for every HTML template file
+// and also to have to add a new route for each HTML template file?
 #[derive(Template)]
 #[template(path = "about.html")]
 struct AboutTemplate;

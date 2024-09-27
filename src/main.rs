@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 use askama::Template;
-use axum::{response::IntoResponse, serve, Router};
+use axum::{response::IntoResponse, Router};
 use layers::AddLayers as _;
 use secrecy::{ExposeSecret as _, SecretString};
 use tokio::net::TcpListener;
@@ -47,7 +47,7 @@ async fn run() -> Result<()> {
         .try_init()?;
 
     // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redis
-    let client = redis::Client::open(format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?))?;
+    let redis = redis::Client::open(format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?))?;
 
     // Initialize routes
     let app = Router::new()
@@ -58,12 +58,12 @@ async fn run() -> Result<()> {
         .fallback(fallback_handler)
         .with_sentry_layer()
         .with_tracing_layer()
-        .with_state(client);
+        .with_state(redis);
 
     // Listen and serve
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
     tracing::info!("Listening on {}", listener.local_addr()?);
-    serve(
+    axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )

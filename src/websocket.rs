@@ -54,20 +54,17 @@ async fn handle_socket(
             let msg = redis::Msg::from_push_info(msg)
                 .context("Unable to convert push info to message")?;
             let msg = msg.get_payload_bytes();
-            let update: StateUpdate = serde_json::from_slice(msg).unwrap();
+            let update = serde_json::from_slice(msg).unwrap();
 
             match update {
                 // TODO do we still need separate added/removed?
                 StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                     // TODO using client directly vs getting (using existing?) connection
                     // TODO single waiter updates instead of sending entire list every time
-                    let pending_requests: Vec<Uuid> = conn.lrange("callbacks", 0, -1).await?;
-                    let res = socket
+                    let pending_requests = conn.lrange("callbacks", 0, -1).await?;
+                    socket
                         .send(ListFragment { pending_requests }.render().unwrap().into())
-                        .await;
-                    if let Err(e) = res {
-                        tracing::debug!("Error sending websocket message: {e:?}");
-                    }
+                        .await?;
                 }
             }
         }
