@@ -6,23 +6,23 @@
     <button type="submit">Send random number</button>
   </form>
 
-  <p><code>curl -L {{ host }}/api/get</code> for a random number.</p>
+  <p hx-ext="ws" ws-connect="/ws">
+    <code>curl -L {{ host }}/api/get</code> for a random number.
+  </p>
 
-  <div id="waitlist" hx-ext="ws" ws-connect="/ws">
-    {% block list %}
-      <div id="list" hx-swap-oob="outerHTML">
-        <p>
-          {% if pending_requests.is_empty() %}
-            Nobody needs a number right now!
-          {% else %}
-            Clients waiting for a number:
-          {% endif %}
-        </p>
+  {% block waitlist %}
+    <ul id="waitlist" hx-swap-oob="outerHTML">
+      <p>
+        {% if pending_requests.is_empty() %}
+          Nobody needs a number right now!
+        {% else %}
+          Clients waiting for a number:
+        {% endif %}
+      </p>
 
-        {% for client in pending_requests %}
-          <li>{{ client }}</li>
-        {% endfor %}
-      </div>
-    {% endblock %}
-  </div>
+      {% for client in pending_requests %}
+        <li>{{ client }}</li>
+      {% endfor %}
+    </ul>
+  {% endblock %}
 {% endblock %}

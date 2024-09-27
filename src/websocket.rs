@@ -15,7 +15,7 @@ use uuid::Uuid;
 use crate::{error::RrgError, message::StateUpdate};
 
 #[derive(Template)]
-#[template(path = "index.html", block = "list")]
+#[template(path = "index.html", block = "waitlist")]
 struct ListFragment {
     pending_requests: Vec<Uuid>,
 }
