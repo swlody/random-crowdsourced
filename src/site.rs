@@ -55,8 +55,18 @@ async fn stats(State(redis): State<redis::Client>) -> Result<Response, RrgError>
     Ok(StatsTemplate { top_n }.into_response())
 }
 
+#[derive(Template)]
+#[template(path = "about.html")]
+struct AboutTemplate;
+
+#[tracing::instrument]
+async fn about() -> impl IntoResponse {
+    AboutTemplate
+}
+
 pub fn routes() -> Router<redis::Client> {
     Router::new()
         .route("/", get(index))
         .route("/stats", get(stats))
+        .route("/about", get(about))
 }
