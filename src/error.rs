@@ -9,6 +9,7 @@ pub struct RrgError(pub anyhow::Error);
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
+        tracing::error!("{}", self.0);
         (StatusCode::INTERNAL_SERVER_ERROR, Body::empty()).into_response()
     }
 }

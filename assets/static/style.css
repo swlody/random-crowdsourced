@@ -95,3 +95,9 @@ button {
   margin: 10px;
   background-color: lavender;
 }
+
+footer {
+  position: absolute;
+  margin: 20px;
+  bottom: 0px;
+}

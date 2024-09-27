@@ -38,7 +38,8 @@ async fn submit_random(
         )
         .await?;
 
-        // conn.incr::<_, _, ()>(&random_number, 1).await?;
+        conn.zincr::<_, _, _, ()>("counts", &random_number, 1)
+            .await?;
     }
 
     Ok((StatusCode::OK, Body::empty()).into_response())

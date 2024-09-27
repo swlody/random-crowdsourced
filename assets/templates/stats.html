@@ -1,0 +1,10 @@
+{% extends "layout.html" %}
+
+{% block main %}
+  <h2>Most random numbers:</h2>
+  <ol>
+    {% for (key, value) in top_n %}
+      <li>{{ key }} has been random {{ value }} times</li>
+    {% endfor %}
+  </ol>
+{% endblock %}

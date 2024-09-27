@@ -27,6 +27,21 @@ async fn index(Host(host): Host, State(redis): State<redis::Client>) -> Result<R
     .into_response())
 }
 
+#[derive(Template)]
+#[template(path = "stats.html")]
+struct StatsTemplate {
+    top_n: Vec<(String, f64)>,
+}
+
+async fn stats(State(redis): State<redis::Client>) -> Result<Response, RrgError> {
+    let mut conn = redis.get_multiplexed_async_connection().await?;
+    let top_n: Vec<(String, f64)> = conn.zrevrange_withscores("counts", 0, 10).await?;
+
+    Ok(StatsTemplate { top_n }.into_response())
+}
+
 pub fn routes() -> Router<redis::Client> {
-    Router::new().route("/", get(index))
+    Router::new()
+        .route("/", get(index))
+        .route("/stats", get(stats))
 }
