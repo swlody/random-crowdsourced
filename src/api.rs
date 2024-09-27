@@ -59,7 +59,6 @@ async fn get_random(
 
     conn.subscribe(guid).await?;
 
-    // TODO proper error handling - map most everything to internal server error
     conn.lpush::<_, _, ()>("callbacks", guid).await?;
     conn.publish::<_, _, ()>(
         "state_updates",

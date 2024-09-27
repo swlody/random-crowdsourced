@@ -9,7 +9,7 @@ use axum::{
     Router,
 };
 use futures_util::FutureExt;
-use redis::Commands as _;
+use redis::AsyncCommands as _;
 use uuid::Uuid;
 
 use crate::{error::RrgError, message::StateUpdate};
@@ -39,7 +39,7 @@ async fn ws_handler(
 async fn handle_socket(
     mut socket: WebSocket,
     who: SocketAddr,
-    mut redis: redis::Client,
+    redis: redis::Client,
 ) -> Result<(), RrgError> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
@@ -61,7 +61,7 @@ async fn handle_socket(
                 StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                     // TODO using client directly vs getting (using existing?) connection
                     // TODO single waiter updates instead of sending entire list every time
-                    let pending_requests: Vec<Uuid> = redis.lrange("callbacks", 0, -1)?;
+                    let pending_requests: Vec<Uuid> = conn.lrange("callbacks", 0, -1).await?;
                     let res = socket
                         .send(ListFragment { pending_requests }.render().unwrap().into())
                         .await;
