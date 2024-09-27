@@ -116,3 +116,8 @@ footer {
   bottom: 0;
   margin: 20px;
 }
+
+h1 a {
+  color: inherit;
+  text-decoration: inherit;
+}
