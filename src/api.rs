@@ -1,10 +1,11 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
+use anyhow::Context as _;
 use axum::{
     body::Body,
     extract::State,
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{IntoResponse as _, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -13,7 +14,7 @@ use serde::Deserialize;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-use crate::message::StateUpdate;
+use crate::{error::RrgError, message::StateUpdate};
 
 #[derive(Deserialize, Debug)]
 struct SubmitParams {
@@ -24,77 +25,78 @@ struct SubmitParams {
 async fn submit_random(
     State(redis): State<redis::Client>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
-) -> impl IntoResponse {
-    let mut conn = redis.get_multiplexed_async_connection().await.unwrap();
+) -> Result<Response, RrgError> {
+    let mut conn = redis.get_multiplexed_async_connection().await?;
 
-    let guid: Option<Uuid> = conn.rpop("callbacks", None).await.unwrap();
+    let guid: Option<Uuid> = conn.rpop("callbacks", None).await?;
     if let Some(guid) = guid {
-        // TODO parse to float?
-        let _: () = conn.publish(guid, random_number).await.unwrap();
+        conn.publish::<_, _, ()>(guid, &random_number).await?;
 
-        let _: () = conn
-            .publish(
-                "state_updates",
-                serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
-            )
-            .await
-            .unwrap();
+        conn.publish::<_, _, ()>(
+            "state_updates",
+            serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+        )
+        .await?;
+
+        conn.incr::<_, _, ()>(&random_number, 1).await?;
     }
 
-    (StatusCode::OK, Body::empty())
+    Ok((StatusCode::OK, Body::empty()).into_response())
 }
 
 #[tracing::instrument]
-async fn get_random(headers: HeaderMap, State(redis): State<redis::Client>) -> impl IntoResponse {
+async fn get_random(
+    headers: HeaderMap,
+    State(redis): State<redis::Client>,
+) -> Result<Response, RrgError> {
     let guid = Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).unwrap();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
     let mut conn = redis
         .get_multiplexed_async_connection_with_config(&config)
-        .await
-        .unwrap();
+        .await?;
 
-    conn.subscribe(guid).await.unwrap();
-    rx.recv().await.unwrap();
+    conn.subscribe(guid).await?;
 
     // TODO proper error handling - map most everything to internal server error
-    let _: () = conn.lpush("callbacks", guid).await.unwrap();
-    let _: () = conn
-        .publish(
-            "state_updates",
-            serde_json::to_string(&StateUpdate::Added(guid)).unwrap(),
-        )
-        .await
-        .unwrap();
+    conn.lpush::<_, _, ()>("callbacks", guid).await?;
+    conn.publish::<_, _, ()>(
+        "state_updates",
+        serde_json::to_string(&StateUpdate::Added(guid))?,
+    )
+    .await?;
 
+    let start_time = Instant::now();
     loop {
-        if let Ok(res) = timeout(Duration::from_secs(30), rx.recv()).await {
-            let res = res.unwrap();
+        if start_time.elapsed() > Duration::from_secs(30) {
+            return Ok((StatusCode::REQUEST_TIMEOUT, String::new()).into_response());
+        }
 
+        if let Ok(Some(res)) = timeout(Duration::from_secs(30), rx.recv()).await {
             if res.kind == redis::PushKind::Message {
-                let random_number = redis::Msg::from_push_info(res).unwrap();
-                return (
+                let random_number = redis::Msg::from_push_info(res)
+                    .context("Cannot convert push info to message")?;
+                return Ok((
                     StatusCode::OK,
                     format!(
                         "{}\n",
-                        std::str::from_utf8(random_number.get_payload_bytes()).unwrap()
+                        std::str::from_utf8(random_number.get_payload_bytes())?
                     ),
-                );
+                )
+                    .into_response());
             }
         } else {
-            let _: () = conn.lrem("callbacks", 1, guid).await.unwrap();
+            conn.lrem::<_, _, ()>("callbacks", 1, guid).await?;
 
-            let _: () = conn
-                .publish(
-                    "state_updates",
-                    serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
-                )
-                .await
-                .unwrap();
+            conn.publish::<_, _, ()>(
+                "state_updates",
+                serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+            )
+            .await?;
 
             // TODO return with Connection::close header in response
-            return (StatusCode::REQUEST_TIMEOUT, String::new());
+            return Ok((StatusCode::REQUEST_TIMEOUT, String::new()).into_response());
         }
     }
 }

@@ -7,8 +7,8 @@ edition = "2021"
 anyhow = "1.0.89"
 askama = { git = "https://github.com/djc/askama", features = [
     "with-axum",
-], commit = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
-askama-axum = { git = "https://github.com/djc/askama", package = "askama_axum", commit = "66b53eecafd97eb4a8333d1309efbc411d1b2618" }
+], rev = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
+askama-axum = { git = "https://github.com/djc/askama", package = "askama_axum", rev = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
 axum = { version = "0.7.5", features = ["macros", "ws"] }
 futures-util = "0.3.30"
 redis = { version = "0.27.2", features = ["tokio-comp", "uuid"] }
@@ -28,6 +28,7 @@ sentry = { version = "0.34.0", default-features = false, features = [
 ] }
 serde = "1.0.210"
 serde_json = "1.0.128"
+thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["full", "time"] }
 tower = "0.5.1"
 tower-http = { version = "0.6.1", features = [

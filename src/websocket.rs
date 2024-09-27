@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use anyhow::Context as _;
 use askama::Template;
 use axum::{
     extract::{ws::WebSocket, ConnectInfo, State, WebSocketUpgrade},
@@ -10,7 +11,7 @@ use axum::{
 use redis::Commands as _;
 use uuid::Uuid;
 
-use crate::message::StateUpdate;
+use crate::{error::RrgError, message::StateUpdate};
 
 #[derive(Template)]
 #[template(path = "index.html", block = "list")]
@@ -24,23 +25,31 @@ async fn ws_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(redis): State<redis::Client>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, addr, redis))
+    ws.on_upgrade(async move |socket| {
+        if let Err(e) = handle_socket(socket, addr, redis).await {
+            tracing::error!("Error in websocket handler: {}", e.0);
+        }
+    })
 }
 
 #[tracing::instrument]
-async fn handle_socket(mut socket: WebSocket, who: SocketAddr, mut redis: redis::Client) {
+async fn handle_socket(
+    mut socket: WebSocket,
+    who: SocketAddr,
+    mut redis: redis::Client,
+) -> Result<(), RrgError> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
     let mut conn = redis
         .get_multiplexed_async_connection_with_config(&config)
-        .await
-        .unwrap();
+        .await?;
 
-    conn.subscribe("state_updates").await.unwrap();
+    conn.subscribe("state_updates").await?;
 
     while let Some(msg) = rx.recv().await {
         if msg.kind == redis::PushKind::Message {
-            let msg = redis::Msg::from_push_info(msg).unwrap();
+            let msg = redis::Msg::from_push_info(msg)
+                .context("Unable to convert push info to message")?;
             let msg = msg.get_payload_bytes();
             let update: StateUpdate = serde_json::from_slice(msg).unwrap();
 
@@ -49,7 +58,7 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, mut redis: redis:
                 StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                     // TODO using client directly vs getting (using existing?) connection
                     // TODO single waiter updates instead of sending entire list every time
-                    let pending_requests: Vec<Uuid> = redis.lrange("callbacks", 0, -1).unwrap();
+                    let pending_requests: Vec<Uuid> = redis.lrange("callbacks", 0, -1)?;
                     let res = socket
                         .send(ListFragment { pending_requests }.render().unwrap().into())
                         .await;
@@ -60,6 +69,8 @@ async fn handle_socket(mut socket: WebSocket, who: SocketAddr, mut redis: redis:
             }
         }
     }
+
+    Ok(())
 }
 
 pub fn routes() -> Router<redis::Client> {

@@ -1,4 +1,7 @@
+#![feature(async_closure)]
+
 mod api;
+mod error;
 mod layers;
 mod message;
 mod site;
@@ -45,7 +48,7 @@ async fn run() -> Result<()> {
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redis/
+    // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redis
     let client = redis::Client::open(format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?))?;
 
     // Initialize routes

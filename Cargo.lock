@@ -44,7 +44,7 @@ checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
 [[package]]
 name = "askama"
 version = "0.13.0"
-source = "git+https://github.com/djc/askama#66169add86bfce25cd16a2dc58a4ea825aee2be4"
+source = "git+https://github.com/djc/askama?rev=66169add86bfce25cd16a2dc58a4ea825aee2be4#66169add86bfce25cd16a2dc58a4ea825aee2be4"
 dependencies = [
  "askama_derive",
  "askama_escape",
@@ -56,7 +56,7 @@ dependencies = [
 [[package]]
 name = "askama_axum"
 version = "0.5.0"
-source = "git+https://github.com/djc/askama#66169add86bfce25cd16a2dc58a4ea825aee2be4"
+source = "git+https://github.com/djc/askama?rev=66169add86bfce25cd16a2dc58a4ea825aee2be4#66169add86bfce25cd16a2dc58a4ea825aee2be4"
 dependencies = [
  "askama",
  "axum-core",
@@ -66,7 +66,7 @@ dependencies = [
 [[package]]
 name = "askama_derive"
 version = "0.13.0"
-source = "git+https://github.com/djc/askama#66169add86bfce25cd16a2dc58a4ea825aee2be4"
+source = "git+https://github.com/djc/askama?rev=66169add86bfce25cd16a2dc58a4ea825aee2be4#66169add86bfce25cd16a2dc58a4ea825aee2be4"
 dependencies = [
  "askama_parser",
  "basic-toml",
@@ -81,12 +81,12 @@ dependencies = [
 [[package]]
 name = "askama_escape"
 version = "0.11.0"
-source = "git+https://github.com/djc/askama#66169add86bfce25cd16a2dc58a4ea825aee2be4"
+source = "git+https://github.com/djc/askama?rev=66169add86bfce25cd16a2dc58a4ea825aee2be4#66169add86bfce25cd16a2dc58a4ea825aee2be4"
 
 [[package]]
 name = "askama_parser"
 version = "0.3.1"
-source = "git+https://github.com/djc/askama#66169add86bfce25cd16a2dc58a4ea825aee2be4"
+source = "git+https://github.com/djc/askama?rev=66169add86bfce25cd16a2dc58a4ea825aee2be4#66169add86bfce25cd16a2dc58a4ea825aee2be4"
 dependencies = [
  "nom",
 ]
@@ -995,6 +995,7 @@ dependencies = [
  "sentry",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tower",
  "tower-http",
