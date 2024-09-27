@@ -8,6 +8,7 @@ use axum::{
     routing::get,
     Router,
 };
+use futures_util::FutureExt;
 use redis::Commands as _;
 use uuid::Uuid;
 
@@ -25,10 +26,12 @@ async fn ws_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(redis): State<redis::Client>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(async move |socket| {
-        if let Err(e) = handle_socket(socket, addr, redis).await {
-            tracing::error!("Error in websocket handler: {}", e.0);
-        }
+    ws.on_upgrade(move |socket| {
+        handle_socket(socket, addr, redis).map(|res| {
+            if let Err(e) = res {
+                tracing::error!("Error in websocket: {}", e.0);
+            }
+        })
     })
 }
 
