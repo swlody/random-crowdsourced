@@ -8,7 +8,7 @@ use axum::{
 use redis::AsyncCommands as _;
 use uuid::Uuid;
 
-use crate::error::RrgError;
+use crate::{error::RrgError, state::AppState};
 
 #[derive(Template)]
 #[template(path = "index.html")]
@@ -23,8 +23,8 @@ async fn get_pending(mut conn: redis::aio::MultiplexedConnection) -> Result<Vec<
 }
 
 #[tracing::instrument]
-async fn index(Host(host): Host, State(redis): State<redis::Client>) -> Result<Response, RrgError> {
-    let conn = redis.get_multiplexed_async_connection().await?;
+async fn index(Host(host): Host, State(state): State<AppState>) -> Result<Response, RrgError> {
+    let conn = state.redis.get_multiplexed_async_connection().await?;
     let pending_requests = get_pending(conn).await?;
     Ok(IndexTemplate {
         pending_requests,
@@ -48,8 +48,8 @@ async fn get_top_n(
 }
 
 #[tracing::instrument]
-async fn stats(State(redis): State<redis::Client>) -> Result<Response, RrgError> {
-    let conn = redis.get_multiplexed_async_connection().await?;
+async fn stats(State(state): State<AppState>) -> Result<Response, RrgError> {
+    let conn = state.redis.get_multiplexed_async_connection().await?;
     let top_10: Vec<(String, f64)> = get_top_n(conn, 9).await?;
 
     Ok(StatsTemplate { top_n: top_10 }.into_response())
@@ -66,7 +66,7 @@ async fn about() -> impl IntoResponse {
     AboutTemplate
 }
 
-pub fn routes() -> Router<redis::Client> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(index))
         .route("/stats", get(stats))

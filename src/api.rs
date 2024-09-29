@@ -14,7 +14,7 @@ use serde::Deserialize;
 use tokio::time::timeout;
 use uuid::Uuid;
 
-use crate::{error::RrgError, message::StateUpdate};
+use crate::{error::RrgError, message::StateUpdate, state::AppState};
 
 #[derive(Deserialize, Debug)]
 struct SubmitParams {
@@ -23,10 +23,10 @@ struct SubmitParams {
 
 #[tracing::instrument]
 async fn submit_random(
-    State(redis): State<redis::Client>,
+    State(state): State<AppState>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> Result<Response, RrgError> {
-    let mut conn = redis.get_multiplexed_async_connection().await?;
+    let mut conn = state.redis.get_multiplexed_async_connection().await?;
 
     let guid: Option<Uuid> = conn.rpop("callbacks", None).await?;
     if let Some(guid) = guid {
@@ -48,13 +48,14 @@ async fn submit_random(
 #[tracing::instrument]
 async fn get_random(
     headers: HeaderMap,
-    State(redis): State<redis::Client>,
+    State(state): State<AppState>,
 ) -> Result<Response, RrgError> {
     let guid = Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).unwrap();
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
-    let mut conn = redis
+    let mut conn = state
+        .redis
         .get_multiplexed_async_connection_with_config(&config)
         .await?;
 
@@ -101,7 +102,7 @@ async fn get_random(
     }
 }
 
-pub fn routes() -> Router<redis::Client> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/get", get(get_random))
         .route("/submit", post(submit_random))

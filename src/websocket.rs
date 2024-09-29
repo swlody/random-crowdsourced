@@ -12,7 +12,7 @@ use futures_util::FutureExt;
 use redis::AsyncCommands as _;
 use uuid::Uuid;
 
-use crate::{error::RrgError, message::StateUpdate};
+use crate::{error::RrgError, message::StateUpdate, state::AppState};
 
 #[derive(Template)]
 #[template(path = "index.html", block = "waitlist")]
@@ -24,10 +24,10 @@ struct ListFragment {
 async fn ws_handler(
     ws: WebSocketUpgrade,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(redis): State<redis::Client>,
+    State(state): State<AppState>,
 ) -> impl IntoResponse {
     ws.on_upgrade(move |socket| {
-        handle_socket(socket, addr, redis).map(|res| {
+        handle_socket(socket, addr, state).map(|res| {
             if let Err(e) = res {
                 tracing::error!("Error in websocket: {}", e.0);
             }
@@ -39,11 +39,12 @@ async fn ws_handler(
 async fn handle_socket(
     mut socket: WebSocket,
     who: SocketAddr,
-    redis: redis::Client,
+    state: AppState,
 ) -> Result<(), RrgError> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
     let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
-    let mut conn = redis
+    let mut conn = state
+        .redis
         .get_multiplexed_async_connection_with_config(&config)
         .await?;
 
@@ -73,6 +74,6 @@ async fn handle_socket(
     Ok(())
 }
 
-pub fn routes() -> Router<redis::Client> {
+pub fn routes() -> Router<AppState> {
     Router::new().route("/", get(ws_handler))
 }
