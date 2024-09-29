@@ -4,7 +4,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-#[allow(clippy::module_name_repetitions)]
 pub struct RrgError(pub anyhow::Error);
 
 impl IntoResponse for RrgError {

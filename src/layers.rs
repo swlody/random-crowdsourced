@@ -10,7 +10,6 @@ use tower_http::{
 };
 use uuid::Uuid;
 
-#[allow(clippy::module_name_repetitions)]
 pub trait AddLayers<State> {
     fn with_tracing_layer(self) -> Router<State>;
     fn with_sentry_layer(self) -> Router<State>;

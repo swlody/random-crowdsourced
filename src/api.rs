@@ -1,6 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use anyhow::Context as _;
 use axum::{
     body::Body,
     extract::State,
@@ -28,9 +27,12 @@ async fn submit_random(
 ) -> Result<Response, RrgError> {
     let mut conn = state.redis.get_multiplexed_async_connection().await?;
 
-    let guid: Option<Uuid> = conn.rpop("callbacks", None).await?;
-    if let Some(guid) = guid {
-        conn.publish::<_, _, ()>(guid, &random_number).await?;
+    if let Some(guid) = conn.rpop("pending_callbacks", None).await? {
+        conn.publish::<_, _, ()>(
+            "callbacks",
+            serde_json::to_string(&(guid, &random_number)).unwrap(),
+        )
+        .await?;
 
         conn.publish::<_, _, ()>(
             "state_updates",
@@ -52,53 +54,32 @@ async fn get_random(
 ) -> Result<Response, RrgError> {
     let guid = Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).unwrap();
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
-    let mut conn = state
-        .redis
-        .get_multiplexed_async_connection_with_config(&config)
-        .await?;
+    let mut conn = state.redis.get_multiplexed_async_connection().await?;
 
-    conn.subscribe(guid).await?;
-
-    conn.lpush::<_, _, ()>("callbacks", guid).await?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    state.callback_map.lock().unwrap().insert(guid, tx);
+    conn.lpush::<_, _, ()>("pending_callbacks", guid).await?;
     conn.publish::<_, _, ()>(
         "state_updates",
         serde_json::to_string(&StateUpdate::Added(guid))?,
     )
     .await?;
 
-    let start_time = Instant::now();
-    loop {
-        if start_time.elapsed() > Duration::from_secs(30) {
-            return Ok((StatusCode::REQUEST_TIMEOUT, String::new()).into_response());
-        }
+    let callback_result = timeout(Duration::from_secs(30), rx).await;
 
-        if let Ok(Some(res)) = timeout(Duration::from_secs(30), rx.recv()).await {
-            if res.kind == redis::PushKind::Message {
-                let random_number = redis::Msg::from_push_info(res)
-                    .context("Cannot convert push info to message")?;
-                return Ok((
-                    StatusCode::OK,
-                    format!(
-                        "{}\n",
-                        std::str::from_utf8(random_number.get_payload_bytes())?
-                    ),
-                )
-                    .into_response());
-            }
-        } else {
-            conn.lrem::<_, _, ()>("callbacks", 1, guid).await?;
+    conn.lrem::<_, _, ()>("pending_callbacks", 1, guid).await?;
+    conn.publish::<_, _, ()>(
+        "state_updates",
+        serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+    )
+    .await?;
 
-            conn.publish::<_, _, ()>(
-                "state_updates",
-                serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
-            )
-            .await?;
-
-            // TODO return with Connection::close header in response
-            return Ok((StatusCode::REQUEST_TIMEOUT, String::new()).into_response());
-        }
+    if let Ok(random_number) = callback_result {
+        let random_number = random_number.unwrap();
+        return Ok((StatusCode::OK, format!("{random_number}\n",)).into_response());
+    } else {
+        // TODO return with Connection::close header in response
+        return Ok((StatusCode::REQUEST_TIMEOUT, String::new()).into_response());
     }
 }
 

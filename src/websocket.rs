@@ -62,7 +62,7 @@ async fn handle_socket(
                 StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                     // TODO using client directly vs getting (using existing?) connection
                     // TODO single waiter updates instead of sending entire list every time
-                    let pending_requests = conn.lrange("callbacks", 0, -1).await?;
+                    let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
                     socket
                         .send(ListFragment { pending_requests }.render().unwrap().into())
                         .await?;

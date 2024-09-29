@@ -19,7 +19,7 @@ struct IndexTemplate {
 
 #[tracing::instrument]
 async fn get_pending(mut conn: redis::aio::MultiplexedConnection) -> Result<Vec<Uuid>, RrgError> {
-    Ok(conn.lrange("callbacks", 0, -1).await?)
+    Ok(conn.lrange("pending_callbacks", 0, -1).await?)
 }
 
 #[tracing::instrument]

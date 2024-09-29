@@ -6,11 +6,15 @@ mod site;
 mod state;
 mod websocket;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::Result;
 use askama::Template;
 use axum::{response::IntoResponse, Router};
+use futures_util::StreamExt as _;
 use layers::AddLayers as _;
 use secrecy::{ExposeSecret as _, SecretString};
 use state::AppState;
@@ -18,6 +22,7 @@ use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+use uuid::Uuid;
 
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
@@ -48,9 +53,31 @@ async fn run() -> Result<()> {
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redis
+    let callback_map = Arc::new(Mutex::new(state::CallbackMap::new()));
+
+    // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redi
     let redis_url = format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?);
     let redis = Arc::new(redis::Client::open(redis_url)?);
+
+    // TODO additional single subscriber for all state updates - broadcast to
+    // websockets via broadcast channel
+    let (mut sink, mut stream) = redis.get_async_pubsub().await?.split();
+    sink.subscribe("callbacks").await?;
+    let pubsub_task = {
+        let callback_map = callback_map.clone();
+        tokio::task::spawn(async move {
+            while let Some(msg) = stream.next().await {
+                let (callback_id, random_number) = serde_json::from_str::<(Uuid, String)>(
+                    std::str::from_utf8(msg.get_payload_bytes()).unwrap(),
+                )
+                .unwrap();
+                let callback = callback_map.lock().unwrap().remove(&callback_id);
+                if let Some(callback) = callback {
+                    callback.send(random_number).unwrap();
+                }
+            }
+        })
+    };
 
     // Initialize routes
     let app = Router::new()
@@ -61,7 +88,10 @@ async fn run() -> Result<()> {
         .fallback(fallback_handler)
         .with_sentry_layer()
         .with_tracing_layer()
-        .with_state(AppState { redis });
+        .with_state(AppState {
+            redis,
+            callback_map,
+        });
 
     // Listen and serve
     let listener = TcpListener::bind("0.0.0.0:8080").await?;
@@ -71,6 +101,9 @@ async fn run() -> Result<()> {
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
+
+    // TODO clean shutdown
+    pubsub_task.abort();
 
     Ok(())
 }
