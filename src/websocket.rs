@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use anyhow::Context as _;
 use askama::Template;
 use axum::{
     extract::{ws::WebSocket, ConnectInfo, State, WebSocketUpgrade},
@@ -12,7 +11,10 @@ use futures_util::FutureExt;
 use redis::AsyncCommands as _;
 use uuid::Uuid;
 
-use crate::{error::RrgError, message::StateUpdate, state::AppState};
+use crate::{
+    error::RrgError,
+    state::{AppState, StateUpdate},
+};
 
 #[derive(Template)]
 #[template(path = "index.html", block = "waitlist")]
@@ -41,32 +43,18 @@ async fn handle_socket(
     who: SocketAddr,
     state: AppState,
 ) -> Result<(), RrgError> {
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let config = redis::AsyncConnectionConfig::new().set_push_sender(tx);
-    let mut conn = state
-        .redis
-        .get_multiplexed_async_connection_with_config(&config)
-        .await?;
+    let mut conn = state.redis.get().await?;
+    let mut rx = state.state_updates.subscribe();
 
-    conn.subscribe("state_updates").await?;
-
-    while let Some(msg) = rx.recv().await {
-        if msg.kind == redis::PushKind::Message {
-            let msg = redis::Msg::from_push_info(msg)
-                .context("Unable to convert push info to message")?;
-            let msg = msg.get_payload_bytes();
-            let update = serde_json::from_slice(msg).unwrap();
-
-            match update {
-                // TODO do we still need separate added/removed?
-                StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
-                    // TODO using client directly vs getting (using existing?) connection
-                    // TODO single waiter updates instead of sending entire list every time
-                    let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
-                    socket
-                        .send(ListFragment { pending_requests }.render().unwrap().into())
-                        .await?;
-                }
+    while let Ok(update) = rx.recv().await {
+        match update {
+            // TODO do we still need separate added/removed?
+            StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
+                // TODO single waiter updates instead of sending entire list every time
+                let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
+                socket
+                    .send(ListFragment { pending_requests }.render().unwrap().into())
+                    .await?;
             }
         }
     }

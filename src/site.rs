@@ -18,14 +18,14 @@ struct IndexTemplate {
 }
 
 #[tracing::instrument]
-async fn get_pending(mut conn: redis::aio::MultiplexedConnection) -> Result<Vec<Uuid>, RrgError> {
+async fn get_pending(redis: deadpool_redis::Pool) -> Result<Vec<Uuid>, RrgError> {
+    let mut conn = redis.get().await?;
     Ok(conn.lrange("pending_callbacks", 0, -1).await?)
 }
 
 #[tracing::instrument]
 async fn index(Host(host): Host, State(state): State<AppState>) -> Result<Response, RrgError> {
-    let conn = state.redis.get_multiplexed_async_connection().await?;
-    let pending_requests = get_pending(conn).await?;
+    let pending_requests = get_pending(state.redis).await?;
     Ok(IndexTemplate {
         pending_requests,
         host,
@@ -40,17 +40,14 @@ struct StatsTemplate {
 }
 
 #[tracing::instrument]
-async fn get_top_n(
-    mut conn: redis::aio::MultiplexedConnection,
-    n: isize,
-) -> Result<Vec<(String, f64)>, RrgError> {
+async fn get_top_n(redis: deadpool_redis::Pool, n: isize) -> Result<Vec<(String, f64)>, RrgError> {
+    let mut conn = redis.get().await?;
     Ok(conn.zrevrange_withscores("counts", 0, n).await?)
 }
 
 #[tracing::instrument]
 async fn stats(State(state): State<AppState>) -> Result<Response, RrgError> {
-    let conn = state.redis.get_multiplexed_async_connection().await?;
-    let top_10: Vec<(String, f64)> = get_top_n(conn, 9).await?;
+    let top_10: Vec<(String, f64)> = get_top_n(state.redis, 9).await?;
 
     Ok(StatsTemplate { top_n: top_10 }.into_response())
 }

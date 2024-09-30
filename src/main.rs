@@ -1,7 +1,6 @@
 mod api;
 mod error;
 mod layers;
-mod message;
 mod site;
 mod state;
 mod websocket;
@@ -14,6 +13,7 @@ use std::{
 use anyhow::Result;
 use askama::Template;
 use axum::{response::IntoResponse, Router};
+use deadpool_redis::Runtime;
 use futures_util::StreamExt as _;
 use layers::AddLayers as _;
 use secrecy::{ExposeSecret as _, SecretString};
@@ -27,16 +27,18 @@ use uuid::Uuid;
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
 
-    let dsn = SecretString::from(std::env::var("SENTRY_DSN")?);
-    let _guard = sentry::init((
-        dsn.expose_secret(),
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            traces_sample_rate: 1.0,
-            attach_stacktrace: true,
-            ..Default::default()
-        },
-    ));
+    if let Ok(dsn) = std::env::var("SENTRY_DSN") {
+        let dsn = SecretString::from(dsn);
+        let _guard = sentry::init((
+            dsn.expose_secret(),
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                traces_sample_rate: 1.0,
+                attach_stacktrace: true,
+                ..Default::default()
+            },
+        ));
+    }
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -55,25 +57,50 @@ async fn run() -> Result<()> {
 
     let callback_map = Arc::new(Mutex::new(state::CallbackMap::new()));
 
-    // TODO connection pooling: https://docs.rs/deadpool-redis/latest/deadpool_redi
-    let redis_url = format!("{}/?protocol=resp3", std::env::var("REDIS_URL")?);
-    let redis = Arc::new(redis::Client::open(redis_url)?);
+    // TODO capacity? configurable?
+    let (tx, rx) = tokio::sync::broadcast::channel(10);
+    // Drop rx to avoid slow receiver problem: https://docs.rs/tokio/latest/tokio/sync/broadcast/index.html#lagging
+    drop(rx);
+    let state_updates = Arc::new(tx.clone());
 
-    // TODO additional single subscriber for all state updates - broadcast to
-    // websockets via broadcast channel
-    let (mut sink, mut stream) = redis.get_async_pubsub().await?.split();
-    sink.subscribe("callbacks").await?;
+    let redis_url = std::env::var("REDIS_URL")?;
+    let config = deadpool_redis::Config::from_url(&redis_url);
+    let redis = config.create_pool(Some(Runtime::Tokio1))?;
+
     let pubsub_task = {
+        let (mut sink, mut stream) = redis::Client::open(redis_url)
+            .unwrap()
+            .get_async_pubsub()
+            .await?
+            .split();
+        sink.subscribe("callbacks").await?;
+        sink.subscribe("state_updates").await?;
+
         let callback_map = callback_map.clone();
+
         tokio::task::spawn(async move {
             while let Some(msg) = stream.next().await {
-                let (callback_id, random_number) = serde_json::from_str::<(Uuid, String)>(
-                    std::str::from_utf8(msg.get_payload_bytes()).unwrap(),
-                )
-                .unwrap();
-                let callback = callback_map.lock().unwrap().remove(&callback_id);
-                if let Some(callback) = callback {
-                    callback.send(random_number).unwrap();
+                let msg_str = std::str::from_utf8(msg.get_payload_bytes()).unwrap();
+
+                match msg.get_channel_name() {
+                    "callbacks" => {
+                        let (callback_id, random_number) =
+                            serde_json::from_str::<(Uuid, String)>(msg_str).unwrap();
+                        let callback = callback_map.lock().unwrap().remove(&callback_id);
+                        if let Some(callback) = callback {
+                            let _ = callback.send(random_number);
+                        }
+                    }
+                    "state_updates" => {
+                        if tx.receiver_count() > 0 {
+                            let state_update =
+                                serde_json::from_str::<state::StateUpdate>(msg_str).unwrap();
+
+                            tx.send(state_update).unwrap();
+                        }
+                    }
+
+                    c => panic!("unknown channel: {c}"),
                 }
             }
         })
@@ -91,6 +118,7 @@ async fn run() -> Result<()> {
         .with_state(AppState {
             redis,
             callback_map,
+            state_updates,
         });
 
     // Listen and serve
