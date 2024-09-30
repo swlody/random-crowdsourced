@@ -31,6 +31,7 @@ async fn submit_random(
     let mut conn = state.redis.get().await?;
 
     if let Some(guid) = conn.rpop("pending_callbacks", None).await? {
+        tracing::debug!("Random number submitted: {random_number}, returning to client: {guid}");
         conn.publish::<_, _, ()>(
             "callbacks",
             serde_json::to_string(&(guid, &random_number)).unwrap(),
@@ -45,6 +46,8 @@ async fn submit_random(
 
         conn.zincr::<_, _, _, ()>("counts", &random_number, 1)
             .await?;
+    } else {
+        tracing::debug!("Random number submitted for no active waiters: {random_number}");
     }
 
     Ok((StatusCode::OK, Body::empty()).into_response())
@@ -78,10 +81,12 @@ async fn get_random(
     .await?;
 
     if let Ok(random_number) = callback_result {
+        tracing::debug!("Returning random number to client: {random_number:?}");
         let random_number = random_number.unwrap();
         return Ok((StatusCode::OK, format!("{random_number}\n",)).into_response());
     } else {
         // TODO return with Connection::close header in response
+        tracing::debug!("Timed out waiting for random number");
         state.callback_map.lock().unwrap().remove(&guid);
         return Ok((StatusCode::REQUEST_TIMEOUT, String::new()).into_response());
     }

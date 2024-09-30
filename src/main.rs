@@ -50,7 +50,8 @@ async fn run() -> Result<()> {
     // Initialize tracing subscribe
     tracing_subscriber::fmt()
         .with_target(true)
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
+        .pretty()
         .finish()
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
@@ -58,9 +59,7 @@ async fn run() -> Result<()> {
     let callback_map = Arc::new(Mutex::new(state::CallbackMap::new()));
 
     // TODO capacity? configurable?
-    let (tx, rx) = tokio::sync::broadcast::channel(10);
-    // Drop rx to avoid slow receiver problem: https://docs.rs/tokio/latest/tokio/sync/broadcast/index.html#lagging
-    drop(rx);
+    let tx = tokio::sync::broadcast::Sender::new(10);
     let state_updates = Arc::new(tx.clone());
 
     let redis_url = std::env::var("REDIS_URL")?;
@@ -88,15 +87,23 @@ async fn run() -> Result<()> {
                             serde_json::from_str::<(Uuid, String)>(msg_str).unwrap();
                         let callback = callback_map.lock().unwrap().remove(&callback_id);
                         if let Some(callback) = callback {
-                            let _ = callback.send(random_number);
+                            if callback.send(random_number).is_err() {
+                                tracing::debug!(
+                                    "{callback_id} dropped before receiving random number"
+                                );
+                            }
                         }
                     }
                     "state_updates" => {
+                        let state_update =
+                            serde_json::from_str::<state::StateUpdate>(msg_str).unwrap();
                         if tx.receiver_count() > 0 {
-                            let state_update =
-                                serde_json::from_str::<state::StateUpdate>(msg_str).unwrap();
-
+                            tracing::debug!("Broadcasting state update: {state_update:?}");
                             tx.send(state_update).unwrap();
+                        } else {
+                            tracing::debug!(
+                                "Processing state update but no open subscribers: {state_update:?}"
+                            );
                         }
                     }
 
