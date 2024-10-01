@@ -22,7 +22,6 @@ use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
-use uuid::Uuid;
 
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
@@ -79,12 +78,10 @@ async fn run() -> Result<()> {
 
         tokio::task::spawn(async move {
             while let Some(msg) = stream.next().await {
-                let msg_str = std::str::from_utf8(msg.get_payload_bytes()).unwrap();
-
                 match msg.get_channel_name() {
                     "callbacks" => {
                         let (callback_id, random_number) =
-                            serde_json::from_str::<(Uuid, String)>(msg_str).unwrap();
+                            serde_json::from_slice(msg.get_payload_bytes()).unwrap();
                         let callback = callback_map.lock().unwrap().remove(&callback_id);
                         if let Some(callback) = callback {
                             if callback.send(random_number).is_err() {
@@ -95,8 +92,7 @@ async fn run() -> Result<()> {
                         }
                     }
                     "state_updates" => {
-                        let state_update =
-                            serde_json::from_str::<state::StateUpdate>(msg_str).unwrap();
+                        let state_update = serde_json::from_slice(msg.get_payload_bytes()).unwrap();
                         if tx.receiver_count() > 0 {
                             tracing::debug!("Broadcasting state update: {state_update:?}");
                             tx.send(state_update).unwrap();
