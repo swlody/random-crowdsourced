@@ -52,9 +52,13 @@ async fn handle_socket(
             StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                 // TODO single waiter updates instead of sending entire list every time
                 let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
-                socket
+                if socket
                     .send(ListFragment { pending_requests }.render().unwrap().into())
-                    .await?;
+                    .await
+                    .is_err()
+                {
+                    tracing::debug!("Socket disconnected with: {:?}", who);
+                }
             }
         }
     }
