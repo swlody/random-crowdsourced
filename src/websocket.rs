@@ -58,6 +58,7 @@ async fn handle_socket(
                     .is_err()
                 {
                     tracing::debug!("Socket disconnected with: {:?}", who);
+                    break;
                 }
             }
         }

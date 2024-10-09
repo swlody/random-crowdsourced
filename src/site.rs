@@ -47,7 +47,7 @@ async fn get_top_n(redis: deadpool_redis::Pool, n: isize) -> Result<Vec<(String,
 
 #[tracing::instrument]
 async fn stats(State(state): State<AppState>) -> Result<Response, RrgError> {
-    let top_10: Vec<(String, f64)> = get_top_n(state.redis, 9).await?;
+    let top_10 = get_top_n(state.redis, 9).await?;
 
     Ok(StatsTemplate { top_n: top_10 }.into_response())
 }

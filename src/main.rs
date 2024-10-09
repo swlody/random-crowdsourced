@@ -61,7 +61,7 @@ async fn run() -> Result<()> {
     let tx = tokio::sync::broadcast::Sender::new(10);
     let state_updates = Arc::new(tx.clone());
 
-    let redis_url = std::env::var("REDIS_URL")?;
+    let redis_url = std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL");
     let config = deadpool_redis::Config::from_url(&redis_url);
     let redis = config.create_pool(Some(Runtime::Tokio1))?;
 
@@ -69,7 +69,8 @@ async fn run() -> Result<()> {
         let (mut sink, mut stream) = redis::Client::open(redis_url)
             .unwrap()
             .get_async_pubsub()
-            .await?
+            .await
+            .expect("Unable to connect to Redis instance")
             .split();
         sink.subscribe("callbacks").await?;
         sink.subscribe("state_updates").await?;
