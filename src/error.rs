@@ -1,5 +1,4 @@
 use axum::{
-    body::Body,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -9,7 +8,7 @@ pub struct RrgError(pub anyhow::Error);
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
         tracing::error!("{}", self.0);
-        (StatusCode::INTERNAL_SERVER_ERROR, Body::empty()).into_response()
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
     }
 }
 
