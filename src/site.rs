@@ -18,9 +18,9 @@ struct IndexTemplate {
 }
 
 #[tracing::instrument]
-async fn get_pending(redis: deadpool_redis::Pool) -> Result<Vec<Uuid>, RrgError> {
-    let mut conn = redis.get().await?;
-    Ok(conn.lrange("pending_callbacks", 0, -1).await?)
+async fn get_pending(mut conn: redis::aio::MultiplexedConnection) -> Result<Vec<Uuid>, RrgError> {
+    let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
+    Ok(pending_requests)
 }
 
 #[tracing::instrument]
@@ -40,8 +40,10 @@ struct StatsTemplate {
 }
 
 #[tracing::instrument]
-async fn get_top_n(redis: deadpool_redis::Pool, n: isize) -> Result<Vec<(String, f64)>, RrgError> {
-    let mut conn = redis.get().await?;
+async fn get_top_n(
+    mut conn: redis::aio::MultiplexedConnection,
+    n: isize,
+) -> Result<Vec<(String, f64)>, RrgError> {
     Ok(conn.zrevrange_withscores("counts", 0, n).await?)
 }
 

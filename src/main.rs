@@ -13,7 +13,6 @@ use std::{
 use anyhow::Result;
 use askama::Template;
 use axum::{response::IntoResponse, Router};
-use deadpool_redis::Runtime;
 use futures_util::StreamExt as _;
 use layers::AddLayers as _;
 use secrecy::{ExposeSecret as _, SecretString};
@@ -62,8 +61,7 @@ async fn run() -> Result<()> {
     let state_updates = Arc::new(tx.clone());
 
     let redis_url = std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL");
-    let config = deadpool_redis::Config::from_url(&redis_url);
-    let redis = config.create_pool(Some(Runtime::Tokio1))?;
+    let redis = redis::Client::open(redis_url.clone()).unwrap();
 
     let pubsub_task = {
         let (mut sink, mut stream) = redis::Client::open(redis_url)
@@ -120,7 +118,7 @@ async fn run() -> Result<()> {
         .with_sentry_layer()
         .with_tracing_layer()
         .with_state(AppState {
-            redis,
+            redis: redis.get_multiplexed_async_connection().await.unwrap(),
             callback_map,
             state_updates,
         });

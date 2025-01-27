@@ -43,7 +43,7 @@ async fn handle_socket(
     who: SocketAddr,
     state: AppState,
 ) -> Result<(), RrgError> {
-    let mut conn = state.redis.get().await?;
+    let mut conn = state.redis.clone();
     let mut rx = state.state_updates.subscribe();
 
     while let Ok(update) = rx.recv().await {

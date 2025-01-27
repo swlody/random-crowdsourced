@@ -27,7 +27,7 @@ async fn submit_random(
     State(state): State<AppState>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> Result<Response, RrgError> {
-    let mut conn = state.redis.get().await?;
+    let mut conn = state.redis.clone();
 
     // If there is someone waiting for a random number...
     if let Some(guid) = conn.rpop("pending_callbacks", None).await? {
@@ -65,7 +65,7 @@ async fn get_random(
     // so we can be sure that it exists and is a valid UUID.
     let guid = Uuid::parse_str(headers["x-request-id"].to_str().unwrap()).unwrap();
 
-    let mut conn = state.redis.get().await?;
+    let mut conn = state.redis.clone();
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     state.callback_map.lock().unwrap().insert(guid, tx);
