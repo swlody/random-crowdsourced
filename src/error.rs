@@ -14,11 +14,14 @@ pub enum RrgError {
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    ToStr(#[from] axum::http::header::ToStrError),
 }
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
-        if let Self::Uuid(_) = self {
+        if let Self::Uuid(_) | Self::ToStr(_) = self {
             StatusCode::BAD_REQUEST.into_response()
         } else {
             tracing::error!("{:?}", self);
