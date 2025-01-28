@@ -6,19 +6,17 @@ mod state;
 mod websocket;
 
 use std::{
-    collections::HashSet,
     net::SocketAddr,
     sync::{Arc, Mutex},
 };
 
 use anyhow::Result;
 use askama::Template;
-use aws_config::BehaviorVersion;
 use axum::{response::IntoResponse, Router};
 use futures_util::StreamExt as _;
 use layers::AddLayers as _;
 use secrecy::{ExposeSecret as _, SecretString};
-use state::{AppState, BANNED_NUMBERS};
+use state::AppState;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::Level;
@@ -107,27 +105,6 @@ async fn run() -> Result<()> {
             }
         })
     };
-
-    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-    let s3 = aws_sdk_s3::Client::new(&config);
-    let banned_numbers = s3
-        .get_object()
-        .bucket("random-crowdsourced")
-        .key("banned_numbers.txt")
-        .send()
-        .await?
-        .body
-        .collect()
-        .await?
-        .to_vec();
-    BANNED_NUMBERS
-        .set(
-            String::from_utf8(banned_numbers)?
-                .lines()
-                .map(str::to_owned)
-                .collect::<HashSet<_>>(),
-        )
-        .unwrap();
 
     // Initialize routes
     let app = Router::new()

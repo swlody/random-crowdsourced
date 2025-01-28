@@ -1,6 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashSet},
-    sync::{Arc, Mutex, OnceLock},
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
 };
 
 use serde::{Deserialize, Serialize};
@@ -12,8 +12,6 @@ pub enum StateUpdate {
     Added(Uuid),
     Removed(Uuid),
 }
-
-pub static BANNED_NUMBERS: OnceLock<HashSet<String>> = OnceLock::new();
 
 pub type CallbackMap = BTreeMap<Uuid, oneshot::Sender<String>>;
 

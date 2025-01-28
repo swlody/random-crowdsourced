@@ -12,8 +12,6 @@ askama = { git = "https://github.com/djc/askama", features = [
     "with-axum",
 ], rev = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
 askama-axum = { git = "https://github.com/djc/askama", package = "askama_axum", rev = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
-aws-config = "1.5.15"
-aws-sdk-s3 = "1.71.0"
 axum = { version = "0.7.5", features = ["macros", "ws"] }
 futures-util = "0.3.30"
 redis = { version = "0.27.2", features = ["tokio-comp", "uuid"] }

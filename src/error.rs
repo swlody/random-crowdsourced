@@ -18,13 +18,13 @@ pub enum RrgError {
     #[error(transparent)]
     ToStr(#[from] axum::http::header::ToStrError),
 
-    #[error("Banned number")]
-    BannedNumber,
+    #[error("Bad request")]
+    BadRequest,
 }
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
-        if let Self::Uuid(_) | Self::ToStr(_) | Self::BannedNumber = self {
+        if let Self::Uuid(_) | Self::ToStr(_) | Self::BadRequest = self {
             StatusCode::BAD_REQUEST.into_response()
         } else {
             tracing::error!("{:?}", self);
