@@ -29,7 +29,7 @@ async fn submit_random(
 ) -> Result<Response, RrgError> {
     if random_number.len() > 50 || BANNED_NUMBERS.get().unwrap().contains(&random_number) {
         tracing::warn!("Ignoring banned number");
-        return Err(RrgError::BannedNumber);
+        return Err(RrgError::BadRequest);
     }
 
     let mut conn = state.redis.clone();
