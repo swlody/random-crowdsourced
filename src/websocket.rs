@@ -31,7 +31,7 @@ async fn ws_handler(
     ws.on_upgrade(move |socket| {
         handle_socket(socket, addr, state).map(|res| {
             if let Err(e) = res {
-                tracing::error!("Error in websocket: {}", e.0);
+                tracing::error!("Error in websocket: {:?}", e);
             }
         })
     })

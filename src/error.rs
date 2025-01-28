@@ -2,21 +2,26 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use thiserror::Error;
 
-pub struct RrgError(pub anyhow::Error);
+#[derive(Error, Debug)]
+pub enum RrgError {
+    #[error(transparent)]
+    Uuid(#[from] uuid::Error),
+
+    #[error(transparent)]
+    Redis(#[from] redis::RedisError),
+
+    #[error(transparent)]
+    Json(#[from] serde_json::Error),
+}
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
-        tracing::error!("{}", self.0);
-        StatusCode::INTERNAL_SERVER_ERROR.into_response()
-    }
-}
-
-impl<E> From<E> for RrgError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
+        tracing::error!("{:?}", self);
+        match self {
+            Self::Uuid(_) => StatusCode::BAD_REQUEST.into_response(),
+            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
     }
 }
