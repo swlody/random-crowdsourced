@@ -136,8 +136,8 @@ async fn run() -> Result<()> {
         .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("assets/static"))
         .fallback(fallback_handler)
-        .with_sentry_layer()
         .with_tracing_layer()
+        .with_sentry_layer()
         .with_state(AppState {
             redis: redis.get_multiplexed_async_connection().await.unwrap(),
             callback_map,
