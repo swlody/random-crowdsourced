@@ -3,6 +3,9 @@ name = "random-crowdsourced"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+debug = true
+
 [dependencies]
 anyhow = "1.0.89"
 askama = { git = "https://github.com/djc/askama", features = [
