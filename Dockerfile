@@ -22,8 +22,7 @@ RUN curl -sL https://sentry.io/get-cli | bash
 
 # Upload debug info
 RUN mv /app/target/release/random-crowdsourced.debug /app
-RUN --mount=type=bind,target=. \
-    --mount=type=secret,id=SENTRY_AUTH_TOKEN,env=SENTRY_AUTH_TOKEN \
+RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
     sentry-cli debug-files upload --include-sources --org sam-wlody --project random-crowdsourced /app/random-crowdsourced.debug
 RUN rm /app/random-crowdsourced.debug
 
