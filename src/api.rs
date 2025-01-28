@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use axum::{
     extract::State,
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse as _, Response},
     routing::{get, post},
     Json, Router,
@@ -101,10 +101,9 @@ async fn get_random(
         let random_number = random_number.unwrap();
         return Ok((StatusCode::OK, format!("{random_number}\n",)).into_response());
     } else {
-        // TODO return with Connection::close header in response
         tracing::debug!("Timed out waiting for random number");
         state.callback_map.lock().unwrap().remove(&guid);
-        return Ok(StatusCode::REQUEST_TIMEOUT.into_response());
+        return Ok(([(header::CONNECTION, "close")], StatusCode::REQUEST_TIMEOUT).into_response());
     }
 }
 
