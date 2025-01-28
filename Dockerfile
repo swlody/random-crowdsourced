@@ -30,7 +30,7 @@ RUN rm /app/random-crowdsourced.debug
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 COPY --from=builder /app/target/release/random-crowdsourced /usr/local/bin
-
 COPY assets/static/ /app/assets/static
+RUN apt-get update && apt-get install -y ca-certificates && update-ca-certificates
 
 ENTRYPOINT ["/usr/local/bin/random-crowdsourced"]
