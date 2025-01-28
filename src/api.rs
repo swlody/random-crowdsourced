@@ -63,7 +63,9 @@ async fn get_random(
     // Grab the request-id from request headers.
     // This is a header that is inserted by the server for request tracking,
     // so we can be sure that it exists and is a valid UUID.
-    let guid = Uuid::parse_str(headers["x-request-id"].to_str().unwrap())?;
+    let request_id_header = headers["x-request-id"].to_str().unwrap();
+    let guid = Uuid::parse_str(request_id_header)
+        .inspect_err(|_| tracing::warn!("Invalid x-request-id '{request_id_header}'"))?;
 
     let mut conn = state.redis.clone();
 

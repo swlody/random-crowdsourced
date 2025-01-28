@@ -18,10 +18,11 @@ pub enum RrgError {
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
-        tracing::error!("{:?}", self);
-        match self {
-            Self::Uuid(_) => StatusCode::BAD_REQUEST.into_response(),
-            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        if let Self::Uuid(_) = self {
+            StatusCode::BAD_REQUEST.into_response()
+        } else {
+            tracing::error!("{:?}", self);
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
