@@ -74,12 +74,12 @@ where
     fn with_tracing_layer(self) -> Self {
         // Enables tracing for each request and adds a request ID header to resposne
         let tracing_service = ServiceBuilder::new()
+            .set_x_request_id(MakeRequestUuidV7)
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(DefaultMakeSpan::new().include_headers(true))
                     .on_response(DefaultOnResponse::new().include_headers(true)),
             )
-            .set_x_request_id(MakeRequestUuidV7)
             .propagate_x_request_id();
         self.layer(tracing_service)
     }
