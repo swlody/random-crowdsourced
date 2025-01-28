@@ -27,7 +27,7 @@ async fn submit_random(
     State(state): State<AppState>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> Result<Response, RrgError> {
-    if BANNED_NUMBERS.get().unwrap().contains(&random_number) {
+    if random_number.len() > 50 || BANNED_NUMBERS.get().unwrap().contains(&random_number) {
         tracing::warn!("Ignoring banned number");
         return Err(RrgError::BannedNumber);
     }
