@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     error::RrgError,
-    state::{AppState, StateUpdate},
+    state::{AppState, StateUpdate, BANNED_NUMBERS},
 };
 
 #[derive(Deserialize, Debug)]
@@ -27,6 +27,11 @@ async fn submit_random(
     State(state): State<AppState>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> Result<Response, RrgError> {
+    if BANNED_NUMBERS.get().unwrap().contains(&random_number) {
+        tracing::warn!("Ignoring banned number");
+        return Err(RrgError::BannedNumber);
+    }
+
     let mut conn = state.redis.clone();
 
     // If there is someone waiting for a random number...
