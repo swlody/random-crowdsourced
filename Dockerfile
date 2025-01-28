@@ -22,8 +22,8 @@ RUN curl -sL https://sentry.io/get-cli | bash
 
 # Upload debug info
 RUN mv /app/target/release/random-crowdsourced.debug /app
-RUN --mount=type=secret,id=sentry_auth_token,env=SENTRY_AUTH_TOKEN \
-    sentry-cli debug-files upload --include-sources --org sam-wlody --project random-crowdsourced /app/random-crowdsourced.debug
+RUN --mount=type=secret,id=sentry_auth_token \
+    sentry-cli debug-files upload --include-sources --org sam-wlody --project random-crowdsourced --auth-token $(cat /run/secrets/sentry_auth_token) /app/random-crowdsourced.debug
 RUN rm /app/random-crowdsourced.debug
 
 # We do not need the Rust toolchain to run the binary!
