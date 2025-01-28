@@ -6,6 +6,7 @@ mod state;
 mod websocket;
 
 use std::{
+    borrow::Cow,
     collections::HashSet,
     net::SocketAddr,
     sync::{Arc, Mutex},
@@ -44,6 +45,7 @@ fn main() -> Result<()> {
             release: sentry::release_name!(),
             traces_sample_rate: 0.1,
             attach_stacktrace: true,
+            server_name: std::env::var("FLY_APP_NAME").map(Cow::from).ok(),
             ..Default::default()
         },
     ));
