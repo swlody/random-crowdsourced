@@ -25,18 +25,16 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
 
-    if let Ok(dsn) = std::env::var("SENTRY_DSN") {
-        let dsn = SecretString::from(dsn);
-        let _guard = sentry::init((
-            dsn.expose_secret(),
-            sentry::ClientOptions {
-                release: sentry::release_name!(),
-                traces_sample_rate: 1.0,
-                attach_stacktrace: true,
-                ..Default::default()
-            },
-        ));
-    }
+    let dsn = SecretString::from(std::env::var("SENTRY_DSN")?);
+    let _guard = sentry::init((
+        dsn.expose_secret(),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            traces_sample_rate: 1.0,
+            attach_stacktrace: true,
+            ..Default::default()
+        },
+    ));
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
