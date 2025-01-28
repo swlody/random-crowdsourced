@@ -27,12 +27,22 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
 
+    // Initialize tracing subscribe
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_max_level(Level::DEBUG)
+        .pretty()
+        .finish()
+        .with(sentry::integrations::tracing::layer())
+        .try_init()?;
+
     let dsn = SecretString::from(std::env::var("SENTRY_DSN")?);
     let _guard = sentry::init((
         dsn.expose_secret(),
         sentry::ClientOptions {
+            debug: true,
             release: sentry::release_name!(),
-            traces_sample_rate: 1.0,
+            traces_sample_rate: 0.1,
             attach_stacktrace: true,
             ..Default::default()
         },
@@ -45,15 +55,6 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
-    // Initialize tracing subscribe
-    tracing_subscriber::fmt()
-        .with_target(true)
-        .with_max_level(Level::DEBUG)
-        .pretty()
-        .finish()
-        .with(sentry::integrations::tracing::layer())
-        .try_init()?;
-
     let callback_map = Arc::new(Mutex::new(state::CallbackMap::new()));
 
     // TODO capacity? configurable?
@@ -136,8 +137,8 @@ async fn run() -> Result<()> {
         .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("assets/static"))
         .fallback(fallback_handler)
-        .with_sentry_layer()
         .with_tracing_layer()
+        .with_sentry_layer()
         .with_state(AppState {
             redis: redis.get_multiplexed_async_connection().await.unwrap(),
             callback_map,
