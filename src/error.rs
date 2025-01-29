@@ -25,18 +25,13 @@ pub enum RrgError {
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
-        let (http_status, sentry_status) =
+        let (http_status, _sentry_status) =
             if let Self::Uuid(_) | Self::ToStr(_) | Self::BadRequest = self {
                 (StatusCode::BAD_REQUEST, SpanStatus::InvalidArgument)
             } else {
                 tracing::error!("{:?}", self);
                 (StatusCode::INTERNAL_SERVER_ERROR, SpanStatus::InternalError)
             };
-
-        sentry::configure_scope(|scope| {
-            scope.get_span().map(|span| span.set_status(sentry_status));
-            scope.set_tag("http.response.status_code", http_status.as_u16());
-        });
 
         http_status.into_response()
     }

@@ -1,11 +1,18 @@
-use std::task::{Context, Poll};
+use std::{
+    future::Future,
+    pin::Pin,
+    task::{Context, Poll},
+};
 
 use axum::{
     body::Body,
-    http::{header, Request},
+    http::{header, Request, Response, StatusCode},
     Router,
 };
-use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
+use sentry::{
+    integrations::tower::{NewSentryLayer, SentryHttpLayer},
+    protocol::SpanStatus,
+};
 use tower::{Layer, Service, ServiceBuilder};
 use tower_http::{
     request_id::{MakeRequestId, RequestId},
@@ -113,6 +120,67 @@ where
     }
 }
 
+#[derive(Clone)]
+pub struct SentryReportStatusCodeLayer;
+
+impl<S> Layer<S> for SentryReportStatusCodeLayer {
+    type Service = SentryReportStatusCodeService<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        SentryReportStatusCodeService { inner }
+    }
+}
+
+#[derive(Clone)]
+pub struct SentryReportStatusCodeService<S> {
+    inner: S,
+}
+
+impl<S, ReqBody> Service<Request<ReqBody>> for SentryReportStatusCodeService<S>
+where
+    S: Service<Request<ReqBody>, Response = Response<Body>>,
+    S::Future: Send + 'static,
+    S::Error: Into<axum::BoxError>,
+{
+    type Response = Response<Body>;
+    type Error = S::Error;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
+        let future = self.inner.call(req);
+
+        Box::pin(async move {
+            let response = future.await?;
+
+            // Extract HTTP status code
+            let http_status = response.status();
+            let sentry_status = match http_status {
+                StatusCode::INTERNAL_SERVER_ERROR => Some(SpanStatus::InternalError),
+                StatusCode::BAD_REQUEST => Some(SpanStatus::InvalidArgument),
+                StatusCode::OK => Some(SpanStatus::Ok),
+                _ => None,
+            };
+
+            // Report status code to Sentry
+            sentry::configure_scope(|scope| {
+                if let Some(sentry_status) = sentry_status {
+                    scope.get_span().map(|span| span.set_status(sentry_status));
+                }
+                scope.set_tag(
+                    "http.response.status_code",
+                    http_status.as_u16().to_string(),
+                );
+            });
+
+            Ok(response)
+        })
+    }
+}
+
 impl<T> AddLayers<T> for Router<T>
 where
     T: Clone + Send + Sync + 'static,
@@ -135,7 +203,8 @@ where
             .layer(NewSentryLayer::new_from_top())
             .layer(SentryHttpLayer::with_transaction())
             .layer(SentryRequestIdLayer)
-            .layer(SentryReportRequestSizeLayer);
+            .layer(SentryReportRequestSizeLayer)
+            .layer(SentryReportStatusCodeLayer);
         self.layer(sentry_service)
     }
 }
