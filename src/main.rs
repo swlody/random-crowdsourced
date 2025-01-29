@@ -62,10 +62,10 @@ async fn run() -> Result<()> {
     let state_updates = Arc::new(tx.clone());
 
     let redis_url = std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL");
-    let redis = redis::Client::open(redis_url.clone()).unwrap();
+    let redis = redis::Client::open(redis_url.as_str()).unwrap();
 
     let pubsub_task = {
-        let (mut sink, mut stream) = redis::Client::open(redis_url)
+        let (mut sink, mut stream) = redis::Client::open(redis_url.as_str())
             .unwrap()
             .get_async_pubsub()
             .await

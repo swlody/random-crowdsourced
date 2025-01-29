@@ -41,9 +41,8 @@ async fn ws_handler(
 async fn handle_socket(
     mut socket: WebSocket,
     who: SocketAddr,
-    state: AppState,
+    mut state: AppState,
 ) -> Result<(), RrgError> {
-    let mut conn = state.redis.clone();
     let mut rx = state.state_updates.subscribe();
 
     while let Ok(update) = rx.recv().await {
@@ -51,7 +50,7 @@ async fn handle_socket(
             // TODO do we still need separate added/removed?
             StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
                 // TODO single waiter updates instead of sending entire list every time
-                let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
+                let pending_requests = state.redis.lrange("pending_callbacks", 0, -1).await?;
                 if socket
                     .send(ListFragment { pending_requests }.render().unwrap().into())
                     .await
