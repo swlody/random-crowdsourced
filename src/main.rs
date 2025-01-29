@@ -42,7 +42,7 @@ fn main() -> Result<()> {
         sentry::ClientOptions {
             debug: true,
             release: sentry::release_name!(),
-            traces_sample_rate: 1.0,
+            traces_sample_rate: 0.1,
             attach_stacktrace: true,
             ..Default::default()
         },
