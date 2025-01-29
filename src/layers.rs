@@ -131,6 +131,33 @@ impl<S> Layer<S> for SentryReportStatusCodeLayer {
     }
 }
 
+fn convert_http_status_to_sentry_status(http_status: StatusCode) -> SpanStatus {
+    match http_status {
+        StatusCode::OK => SpanStatus::Ok,
+        StatusCode::UNAUTHORIZED => SpanStatus::Unauthenticated,
+        StatusCode::FORBIDDEN => SpanStatus::PermissionDenied,
+        StatusCode::NOT_FOUND => SpanStatus::NotFound,
+        StatusCode::CONFLICT => SpanStatus::AlreadyExists,
+        StatusCode::PRECONDITION_FAILED => SpanStatus::FailedPrecondition,
+        StatusCode::TOO_MANY_REQUESTS => SpanStatus::ResourceExhausted,
+        StatusCode::NOT_IMPLEMENTED => SpanStatus::Unimplemented,
+        StatusCode::SERVICE_UNAVAILABLE => SpanStatus::Unavailable,
+
+        other => {
+            let code = other.as_u16();
+            if (100..=399).contains(&code) {
+                SpanStatus::Ok
+            } else if (400..=499).contains(&code) {
+                SpanStatus::InvalidArgument
+            } else if (500..=599).contains(&code) {
+                SpanStatus::InternalError
+            } else {
+                SpanStatus::UnknownError
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct SentryReportStatusCodeService<S> {
     inner: S,
@@ -158,18 +185,11 @@ where
 
             // Extract HTTP status code
             let http_status = response.status();
-            let sentry_status = match http_status {
-                StatusCode::INTERNAL_SERVER_ERROR => Some(SpanStatus::InternalError),
-                StatusCode::BAD_REQUEST => Some(SpanStatus::InvalidArgument),
-                StatusCode::OK => Some(SpanStatus::Ok),
-                _ => None,
-            };
+            let sentry_status = convert_http_status_to_sentry_status(http_status);
 
             // Report status code to Sentry
             sentry::configure_scope(|scope| {
-                if let Some(sentry_status) = sentry_status {
-                    scope.get_span().map(|span| span.set_status(sentry_status));
-                }
+                scope.get_span().map(|span| span.set_status(sentry_status));
                 scope.set_tag(
                     "http.response.status_code",
                     http_status.as_u16().to_string(),
