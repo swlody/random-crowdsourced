@@ -137,6 +137,7 @@ async fn run() -> Result<()> {
         .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("assets/static"))
         .fallback(fallback_handler)
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(4096))
         .with_sentry_layer()
         .with_tracing_layer()
         .with_state(AppState {

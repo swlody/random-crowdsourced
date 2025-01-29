@@ -36,12 +36,7 @@ serde_json = "1.0.128"
 thiserror = "1.0.64"
 tokio = { version = "1.40.0", features = ["full", "time"] }
 tower = "0.5.1"
-tower-http = { version = "0.6.1", features = [
-    "fs",
-    "request-id",
-    "trace",
-    "util",
-] }
+tower-http = { version = "0.6.1", features = ["fs", "limit", "request-id", "trace", "util"] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 uuid = { version = "1.10.0", features = ["v7"] }
