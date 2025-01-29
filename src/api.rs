@@ -35,6 +35,11 @@ async fn submit_random(
     // If there is someone waiting for a random number...
     if let Some(guid) = state.redis.rpop("pending_callbacks", None).await? {
         tracing::debug!("Random number submitted: {random_number}, returning to client: {guid}");
+        sentry::configure_scope(|scope| {
+            scope.set_tag("random_number", &random_number);
+            scope.set_tag("associated_guid", &guid);
+        });
+
         // Send the random number over the response channel
         state
             .redis
