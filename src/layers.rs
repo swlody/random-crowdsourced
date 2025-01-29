@@ -1,6 +1,10 @@
 use std::task::{Context, Poll};
 
-use axum::{body::Body, http::Request, Router};
+use axum::{
+    body::Body,
+    http::{header, Request},
+    Router,
+};
 use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use tower::{Layer, Service, ServiceBuilder};
 use tower_http::{
@@ -67,6 +71,48 @@ where
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct SentryReportRequestSizeLayer;
+
+impl<S> Layer<S> for SentryReportRequestSizeLayer {
+    type Service = SentryReportRequestSizeService<S>;
+
+    fn layer(&self, service: S) -> Self::Service {
+        SentryReportRequestSizeService { service }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct SentryReportRequestSizeService<S> {
+    service: S,
+}
+
+impl<S> Service<Request<Body>> for SentryReportRequestSizeService<S>
+where
+    S: Service<Request<Body>>,
+{
+    type Response = S::Response;
+    type Error = S::Error;
+    type Future = S::Future;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.service.poll_ready(cx)
+    }
+
+    fn call(&mut self, request: Request<Body>) -> Self::Future {
+        if let Some(content_length) = request
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .and_then(|header| header.to_str().ok())
+        {
+            sentry::configure_scope(|scope| {
+                scope.set_tag("http.request.content_length", content_length);
+            });
+        }
+        self.service.call(request)
+    }
+}
+
 impl<T> AddLayers<T> for Router<T>
 where
     T: Clone + Send + Sync + 'static,
@@ -88,7 +134,8 @@ where
         let sentry_service = ServiceBuilder::new()
             .layer(NewSentryLayer::new_from_top())
             .layer(SentryHttpLayer::with_transaction())
-            .layer(SentryRequestIdLayer);
+            .layer(SentryRequestIdLayer)
+            .layer(SentryReportRequestSizeLayer);
         self.layer(sentry_service)
     }
 }

@@ -42,7 +42,7 @@ fn main() -> Result<()> {
         sentry::ClientOptions {
             debug: true,
             release: sentry::release_name!(),
-            traces_sample_rate: 0.1,
+            traces_sample_rate: 1.0,
             attach_stacktrace: true,
             ..Default::default()
         },
@@ -137,9 +137,9 @@ async fn run() -> Result<()> {
         .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("assets/static"))
         .fallback(fallback_handler)
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(4096))
         .with_sentry_layer()
         .with_tracing_layer()
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(4096))
         .with_state(AppState {
             redis: redis.get_multiplexed_async_connection().await.unwrap(),
             callback_map,

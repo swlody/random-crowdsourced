@@ -35,7 +35,7 @@ impl IntoResponse for RrgError {
 
         sentry::configure_scope(|scope| {
             scope.get_span().map(|span| span.set_status(sentry_status));
-            scope.set_tag("http.status_code", http_status.as_u16());
+            scope.set_tag("http.response.status_code", http_status.as_u16());
         });
 
         http_status.into_response()
