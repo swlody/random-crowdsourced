@@ -32,7 +32,7 @@ primary_region = 'iad'
 [[http_service.machine_checks]]
   image = "curlimages/curl"
   entrypoint = ["/bin/sh", "-c"]
-  command = ["curl https://[$FLY_TEST_MACHINE_IP] | grep 'really really good random number generator'"]
+  command = ["curl [$FLY_TEST_MACHINE_IP] | grep 'really really good random number generator'"]
   kill_signal = "SIGKILL"
   kill_timeout = "5s"
 
