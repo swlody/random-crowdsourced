@@ -24,6 +24,7 @@ primary_region = 'iad'
   interval = "5m"
   method = "GET"
   protocol = "https"
+  tls_server_name = "rrgrng.org"
   timeout = "1s"
   path = "/"
 
@@ -33,7 +34,7 @@ primary_region = 'iad'
 [[http_service.machine_checks]]
   image = "curlimages/curl"
   entrypoint = ["/bin/sh", "-c"]
-  command = ["curl http://[$FLY_TEST_MACHINE_IP] | grep 'really really good random number generator'"]
+  command = ["curl https://[$FLY_TEST_MACHINE_IP] | grep 'really really good random number generator'"]
   kill_signal = "SIGKILL"
   kill_timeout = "5s"
 
