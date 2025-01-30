@@ -9,6 +9,7 @@ use core::panic;
 use std::{
     collections::HashSet,
     net::SocketAddr,
+    str::FromStr,
     sync::{Arc, Mutex},
 };
 
@@ -18,41 +19,76 @@ use axum::Router;
 use error::RrgError;
 use futures_util::StreamExt as _;
 use layers::AddLayers as _;
+use secrecy::{ExposeSecret as _, SecretString};
 use state::{AppState, BANNED_NUMBERS};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
+struct Config {
+    log_level: Option<tracing::metadata::Level>,
+    trace_sample_rate: Option<f32>,
+    broadcast_capacity: Option<usize>,
+
+    sentry_dsn: SecretString,
+    redis_url: String,
+}
+
+impl Config {
+    fn from_environment() -> Self {
+        Self {
+            log_level: std::env::var("RRG_LOG_LEVEL").ok().map(|level| {
+                Level::from_str(level.as_str())
+                    .unwrap_or_else(|_| panic!("Invalid value for RRG_LOG_LEVEL: {level}"))
+            }),
+
+            trace_sample_rate: std::env::var("RRG_SENTRY_TRACING_SAMPLE_RATE")
+                .ok()
+                .map(|rate| {
+                    let rate = rate.parse().unwrap_or_else(|_| {
+                        panic!("Invalid value for RRG_SENTRY_TRACING_SAMPLE_RATE: {rate}")
+                    });
+                    assert!((0.0..=1.0).contains(&rate));
+                    rate
+                }),
+
+            sentry_dsn: SecretString::from(
+                std::env::var("SENTRY_DSN").expect("Missing SENTRY_DSN"),
+            ),
+
+            broadcast_capacity: std::env::var("RRG_BROADCAST_CAPACITY")
+                .ok()
+                .map(|capacity| {
+                    capacity
+                        .parse()
+                        .unwrap_or_else(|_| panic!("Invalid broadcast capacity: {capacity}"))
+                }),
+
+            redis_url: std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL"),
+        }
+    }
+}
+
 fn main() -> Result<()> {
     rubenvy::rubenvy_auto()?;
+
+    let config = Config::from_environment();
 
     // Initialize tracing subscribe
     tracing_subscriber::fmt()
         .with_target(true)
-        .with_max_level(Level::DEBUG)
+        .with_max_level(config.log_level.unwrap_or(Level::DEBUG))
         .pretty()
         .finish()
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    let sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE").map(|v| {
-        let rate = v
-            .parse()
-            .unwrap_or_else(|_| panic!("Invalid value for SENTRY_TRACES_SAMPLE_RATE{v}"));
-
-        assert!(
-            (0.0..=1.0).contains(&rate),
-            "Invalid value for SENTRY_TRACES_SAMPLE_RATE: {v}"
-        );
-        rate
-    });
-
     let _guard = sentry::init((
-        std::env::var("SENTRY_DSN").expect("Invalid SENTRY_DSN"),
+        config.sentry_dsn.expose_secret(),
         sentry::ClientOptions {
             release: sentry::release_name!(),
-            traces_sample_rate: sample_rate.unwrap_or(0.1),
+            traces_sample_rate: config.trace_sample_rate.unwrap_or(0.1),
             attach_stacktrace: true,
             ..Default::default()
         },
@@ -61,13 +97,13 @@ fn main() -> Result<()> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(run())
+        .block_on(run(config))
 }
 
 #[allow(clippy::too_many_lines)]
-async fn run() -> Result<()> {
-    let config = aws_config::load_defaults(BehaviorVersion::latest()).await;
-    let s3 = aws_sdk_s3::Client::new(&config);
+async fn run(config: Config) -> Result<()> {
+    let aws_config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let s3 = aws_sdk_s3::Client::new(&aws_config);
     let banned_numbers = s3
         .get_object()
         .bucket("random-crowdsourced")
@@ -89,14 +125,10 @@ async fn run() -> Result<()> {
 
     let callback_map = Arc::new(Mutex::new(state::CallbackMap::new()));
 
-    let tx = tokio::sync::broadcast::Sender::new(
-        std::env::var("BROADCAST_CAPACITY")
-            .map(|s| s.parse().expect("Invalid broadcast capacity"))
-            .unwrap_or(10),
-    );
+    let tx = tokio::sync::broadcast::Sender::new(config.broadcast_capacity.unwrap_or(10));
     let state_updates = Arc::new(tx.clone());
 
-    let redis_url = std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL");
+    let redis_url = config.redis_url;
     let redis =
         redis::Client::open(redis_url.as_str()).expect("Unable to open initialize redis client");
 

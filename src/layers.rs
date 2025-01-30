@@ -161,7 +161,9 @@ where
 
             // Report status code to Sentry
             sentry::configure_scope(|scope| {
-                scope.get_span().map(|span| span.set_status(sentry_status));
+                if let Some(span) = scope.get_span() {
+                    span.set_status(sentry_status)
+                };
                 scope.set_tag(
                     "http.response.status_code",
                     http_status.as_u16().to_string(),
