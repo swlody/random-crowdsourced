@@ -47,15 +47,20 @@ async fn submit_random(
                     classes: r#"class="error" classes="remove error""#,
                     context: "Bad!",
                 }
-                .render()?,
+                .render()
+                .map_err(anyhow::Error::from)?,
             ),
         ));
     }
 
-    let mut conn = state.redis.get().await?;
+    let mut conn = state.redis.get().await.map_err(anyhow::Error::from)?;
 
     // If there is someone waiting for a random number...
-    if let Some(guid) = conn.rpop("pending_callbacks", None).await? {
+    if let Some(guid) = conn
+        .rpop("pending_callbacks", None)
+        .await
+        .map_err(anyhow::Error::from)?
+    {
         tracing::debug!("Random number submitted: {random_number}, returning to client: {guid}");
         sentry::configure_scope(|scope| {
             scope.set_tag("random_number", &random_number);
@@ -67,17 +72,20 @@ async fn submit_random(
             "callbacks",
             serde_json::to_string(&(guid, &random_number)).unwrap(),
         )
-        .await?;
+        .await
+        .map_err(anyhow::Error::from)?;
 
         // Indicate to any open provider portals that the user no longer needs a number
         conn.publish::<_, _, ()>(
             "state_updates",
             serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
         )
-        .await?;
+        .await
+        .map_err(anyhow::Error::from)?;
 
         conn.zincr::<_, _, _, ()>("counts", &random_number, 1)
-            .await?;
+            .await
+            .map_err(anyhow::Error::from)?;
     } else {
         tracing::debug!("Random number submitted for no active waiters: {random_number}");
 
@@ -88,7 +96,8 @@ async fn submit_random(
                     classes: r#"class="warning" classes="remove warning""#,
                     context: "Nobody got your number!",
                 }
-                .render()?,
+                .render()
+                .map_err(anyhow::Error::from)?,
             ),
         ));
     }
@@ -100,7 +109,8 @@ async fn submit_random(
                 classes: r#"class="success" classes="remove success""#,
                 context: "Thanks!",
             }
-            .render()?,
+            .render()
+            .map_err(anyhow::Error::from)?,
         ),
     ));
 }
@@ -117,29 +127,35 @@ async fn get_random(
     let guid = Uuid::parse_str(request_id_header)
         .inspect_err(|_| tracing::warn!("Invalid x-request-id '{request_id_header}'"))?;
 
-    let mut conn = state.redis.get().await?;
+    let mut conn = state.redis.get().await.map_err(anyhow::Error::from)?;
 
     let (tx, rx) = tokio::sync::oneshot::channel();
     state.callback_map.lock().unwrap().insert(guid, tx);
 
     // Register as a new waiter for a random number
-    conn.lpush::<_, _, ()>("pending_callbacks", guid).await?;
+    conn.lpush::<_, _, ()>("pending_callbacks", guid)
+        .await
+        .map_err(anyhow::Error::from)?;
     conn.publish::<_, _, ()>(
         "state_updates",
-        serde_json::to_string(&StateUpdate::Added(guid))?,
+        serde_json::to_string(&StateUpdate::Added(guid)).map_err(anyhow::Error::from)?,
     )
-    .await?;
+    .await
+    .map_err(anyhow::Error::from)?;
 
     // Wait for the random number to be sent by a provider
     // TODO configurable timeout!
     let callback_result = timeout(Duration::from_secs(30), rx).await;
 
-    conn.lrem::<_, _, ()>("pending_callbacks", 1, guid).await?;
+    conn.lrem::<_, _, ()>("pending_callbacks", 1, guid)
+        .await
+        .map_err(anyhow::Error::from)?;
     conn.publish::<_, _, ()>(
         "state_updates",
         serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
     )
-    .await?;
+    .await
+    .map_err(anyhow::Error::from)?;
 
     if let Ok(random_number) = callback_result {
         tracing::debug!("Returning random number to client: {random_number:?}");

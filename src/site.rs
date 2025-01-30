@@ -16,11 +16,14 @@ use crate::{error::RrgError, state::AppState};
 #[tracing::instrument]
 async fn get_pending(redis: Arc<deadpool_redis::Pool>) -> Result<Vec<Uuid>, RrgError> {
     // get all members pending_callbacks list
-    let mut conn = redis.get().await?;
+    let mut conn = redis
+        .get()
+        .await
+        .map_err(|e| RrgError::RenderingInternalError(e.into()))?;
     // let pending_requests = conn
     //     .lrange("pending_callbacks", 0, -1)
     //     .await
-    //     .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+    //     .map_err(|e| RrgError::RenderingInternalError(e.into()))?;
 
     let pending_requests = cmd("LRANGE")
         .arg("pending_callbacks")
@@ -52,7 +55,7 @@ async fn index(
             host,
         }
         .render()
-        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?,
+        .map_err(|e| RrgError::RenderingInternalError(e.into()))?,
     ))
 }
 
@@ -61,12 +64,15 @@ async fn get_top_n(
     redis: Arc<deadpool_redis::Pool>,
     n: isize,
 ) -> Result<Vec<(String, f64)>, RrgError> {
-    let mut conn = redis.get().await?;
+    let mut conn = redis
+        .get()
+        .await
+        .map_err(|e| RrgError::RenderingInternalError(e.into()))?;
     // Get the top n values with the highest scores along with their scores
     let top_n = conn
         .zrevrange_withscores("counts", 0, n)
         .await
-        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+        .map_err(|e| RrgError::RenderingInternalError(e.into()))?;
     Ok(top_n)
 }
 
@@ -80,9 +86,11 @@ async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, RrgEr
 
     let top_10 = get_top_n(state.redis, 9).await?;
 
-    Ok(Html(StatsTemplate { top_n: top_10 }.render().map_err(
-        |e| RrgError::RenderingInternalError(anyhow::Error::new(e)),
-    )?))
+    Ok(Html(
+        StatsTemplate { top_n: top_10 }
+            .render()
+            .map_err(|e| RrgError::RenderingInternalError(e.into()))?,
+    ))
 }
 
 #[tracing::instrument]
@@ -91,9 +99,11 @@ async fn about() -> Result<impl IntoResponse, RrgError> {
     #[template(path = "about.html")]
     struct AboutTemplate;
 
-    Ok(Html(AboutTemplate.render().map_err(|e| {
-        RrgError::RenderingInternalError(anyhow::Error::new(e))
-    })?))
+    Ok(Html(
+        AboutTemplate
+            .render()
+            .map_err(|e| RrgError::RenderingInternalError(e.into()))?,
+    ))
 }
 
 pub fn routes() -> Router<AppState> {

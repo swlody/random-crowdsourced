@@ -11,25 +11,16 @@ pub enum RrgError {
     Uuid(#[from] uuid::Error),
 
     #[error(transparent)]
-    Deadpool(#[from] deadpool_redis::PoolError),
-
-    #[error(transparent)]
-    Redis(#[from] redis::RedisError),
-
-    #[error(transparent)]
-    Json(#[from] serde_json::Error),
-
-    #[error(transparent)]
     ToStr(#[from] axum::http::header::ToStrError),
-
-    #[error(transparent)]
-    Render(#[from] rinja::Error),
 
     #[error("Not found")]
     NotFound,
 
     #[error(transparent)]
-    RenderingInternalError(#[from] anyhow::Error),
+    RenderingInternalError(anyhow::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 #[derive(Template)]
@@ -55,8 +46,8 @@ impl IntoResponse for RrgError {
                     |body| (StatusCode::INTERNAL_SERVER_ERROR, Html(body)).into_response(),
                 )
             }
-            _ => {
-                tracing::error!("{:?}", self);
+            Self::Other(e) => {
+                tracing::error!("{:?}", e);
                 StatusCode::INTERNAL_SERVER_ERROR.into_response()
             }
         }
