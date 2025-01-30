@@ -2,4 +2,3 @@ assets/node_modules/
 target/
 .env.local
 **/.DS_Store
-bans/

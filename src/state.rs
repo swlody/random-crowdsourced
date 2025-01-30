@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    net::Ipv4Addr,
     sync::{Arc, Mutex, OnceLock},
 };
 
@@ -16,7 +15,6 @@ pub enum StateUpdate {
 
 // naughty numbers
 pub static BANNED_NUMBERS: OnceLock<HashSet<String>> = OnceLock::new();
-pub static BANNED_IPS: OnceLock<HashSet<Ipv4Addr>> = OnceLock::new();
 
 pub type CallbackMap = BTreeMap<Uuid, oneshot::Sender<String>>;
 

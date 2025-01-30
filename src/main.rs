@@ -1,6 +1,5 @@
 mod api;
 mod error;
-mod headers;
 mod layers;
 mod site;
 mod state;
@@ -9,7 +8,7 @@ mod websocket;
 use core::panic;
 use std::{
     collections::HashSet,
-    net::{Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     str::FromStr,
     sync::{Arc, Mutex},
 };
@@ -23,7 +22,7 @@ use futures_util::StreamExt as _;
 use layers::AddLayers as _;
 use rinja::Template;
 use secrecy::{ExposeSecret as _, SecretString};
-use state::{AppState, StateUpdate, BANNED_IPS, BANNED_NUMBERS};
+use state::{AppState, StateUpdate, BANNED_NUMBERS};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::Level;
@@ -135,26 +134,6 @@ async fn run(config: Config) -> Result<()> {
             String::from_utf8(banned_numbers)?
                 .lines()
                 .map(str::to_owned)
-                .collect::<HashSet<_>>(),
-        )
-        .unwrap();
-
-    // SORRY!
-    let banned_ips = s3
-        .get_object()
-        .bucket("random-crowdsourced")
-        .key("banned_ips.txt")
-        .send()
-        .await?
-        .body
-        .collect()
-        .await?
-        .to_vec();
-    BANNED_IPS
-        .set(
-            String::from_utf8(banned_ips)?
-                .lines()
-                .map(|s| Ipv4Addr::from_str(s).unwrap())
                 .collect::<HashSet<_>>(),
         )
         .unwrap();

@@ -7,7 +7,6 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use axum_extra::TypedHeader;
 use redis::AsyncCommands as _;
 use rinja::Template;
 use serde::Deserialize;
@@ -16,8 +15,7 @@ use uuid::Uuid;
 
 use crate::{
     error::RrgError,
-    headers::CloudflareConnectingIp,
-    state::{AppState, StateUpdate, BANNED_IPS, BANNED_NUMBERS},
+    state::{AppState, StateUpdate, BANNED_NUMBERS},
 };
 
 #[derive(Deserialize, Debug)]
@@ -28,7 +26,6 @@ struct SubmitParams {
 #[tracing::instrument]
 async fn submit_random(
     State(state): State<AppState>,
-    cf_ip: Option<TypedHeader<CloudflareConnectingIp>>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> Result<impl IntoResponse, RrgError> {
     #[derive(Template)]
@@ -36,22 +33,6 @@ async fn submit_random(
     struct InputFieldTemplate<'a> {
         classes: &'a str,
         context: &'a str,
-    }
-
-    if let Some(TypedHeader(CloudflareConnectingIp(cf_ip))) = cf_ip {
-        if BANNED_IPS.get().unwrap().contains(&cf_ip) {
-            return Ok((
-                StatusCode::UNAUTHORIZED,
-                Html(
-                    InputFieldTemplate {
-                        classes: r#"class="error" classes="remove error""#,
-                        context: "Bad!",
-                    }
-                    .render()
-                    .map_err(anyhow::Error::from)?,
-                ),
-            ));
-        }
     }
 
     if random_number.len() > 50 || BANNED_NUMBERS.get().unwrap().contains(&random_number) {

@@ -3,4 +3,3 @@ fly.toml
 target/
 .env.local
 .rustfmt.toml
-bans/
