@@ -72,6 +72,8 @@ async fn submit_random(
         ));
     }
 
+    sentry::configure_scope(|scope| scope.set_tag("random_number", &random_number));
+
     let mut conn = state.redis.get().await.map_err(anyhow::Error::from)?;
 
     // If there is someone waiting for a random number...
@@ -82,7 +84,6 @@ async fn submit_random(
     {
         tracing::debug!("Random number submitted: {random_number}, returning to client: {guid}");
         sentry::configure_scope(|scope| {
-            scope.set_tag("random_number", &random_number);
             scope.set_tag("associated_guid", guid);
         });
 
