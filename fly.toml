@@ -21,7 +21,7 @@ primary_region = 'iad'
 
 [[http_service.checks]]
   grace_period = "5s"
-  interval = "5m"
+  interval = "1m"
   method = "GET"
   timeout = "1s"
   path = "/"
