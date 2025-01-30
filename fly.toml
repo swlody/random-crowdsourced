@@ -24,7 +24,7 @@ primary_region = 'iad'
   interval = "1m"
   method = "GET"
   timeout = "1s"
-  path = "/"
+  path = "/api/health"
 
 [http_service.checks.headers]
   Fly-Health-Check = "true"

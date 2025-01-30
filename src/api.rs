@@ -169,4 +169,5 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/get", get(get_random))
         .route("/submit", post(submit_random))
+        .route("/health", get(|| async { StatusCode::OK }))
 }
