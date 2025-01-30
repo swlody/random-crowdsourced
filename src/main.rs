@@ -36,39 +36,27 @@ fn main() -> Result<()> {
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    let guard = std::env::var("SENTRY_DSN").map_or_else(
-        |_| None,
-        |dsn| {
-            let sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE")
-                .map(|v| {
-                    let rate = v.parse().unwrap_or_else(|_| {
-                        panic!("Invalid value for SENTRY_TRACES_SAMPLE_RATE{v}")
-                    });
+    let sample_rate = std::env::var("SENTRY_TRACES_SAMPLE_RATE").map(|v| {
+        let rate = v
+            .parse()
+            .unwrap_or_else(|_| panic!("Invalid value for SENTRY_TRACES_SAMPLE_RATE{v}"));
 
-                    assert!(
-                        (0.0..=1.0).contains(&rate),
-                        "Invalid value for SENTRY_TRACES_SAMPLE_RATE: {v}"
-                    );
-                    rate
-                })
-                .unwrap_or(0.1);
-            Some(sentry::init((
-                dsn,
-                sentry::ClientOptions {
-                    release: sentry::release_name!(),
-                    traces_sample_rate: sample_rate,
-                    attach_stacktrace: true,
-                    ..Default::default()
-                },
-            )))
+        assert!(
+            (0.0..=1.0).contains(&rate),
+            "Invalid value for SENTRY_TRACES_SAMPLE_RATE: {v}"
+        );
+        rate
+    });
+
+    let _guard = sentry::init((
+        std::env::var("SENTRY_DSN").expect("Invalid SENTRY_DSN"),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            traces_sample_rate: sample_rate.unwrap_or(0.1),
+            attach_stacktrace: true,
+            ..Default::default()
         },
-    );
-
-    if guard.is_some() {
-        tracing::info!("Initialized sentry client");
-    } else {
-        tracing::warn!("Sentry DSN not found. Sentry is not initialized");
-    }
+    ));
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
