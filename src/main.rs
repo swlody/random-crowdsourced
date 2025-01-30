@@ -16,15 +16,19 @@ use std::{
 use anyhow::Result;
 use aws_config::BehaviorVersion;
 use axum::Router;
+use deadpool_redis::Runtime;
 use error::RrgError;
 use futures_util::StreamExt as _;
 use layers::AddLayers as _;
+use redis::AsyncCommands as _;
+use rinja::Template;
 use secrecy::{ExposeSecret as _, SecretString};
-use state::{AppState, BANNED_NUMBERS};
+use state::{AppState, StateUpdate, BANNED_NUMBERS};
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
+use uuid::Uuid;
 
 struct Config {
     log_level: Option<tracing::metadata::Level>,
@@ -141,8 +145,8 @@ async fn run(config: Config) -> Result<()> {
     let state_updates = Arc::new(tx.clone());
 
     let redis_url = config.redis_url;
-    let redis =
-        redis::Client::open(redis_url.as_str()).expect("Unable to open initialize redis client");
+    let deadpool_config = deadpool_redis::Config::from_url(redis_url.as_str());
+    let redis = Arc::new(deadpool_config.create_pool(Some(Runtime::Tokio1))?);
 
     let pubsub_task = {
         let (mut sink, mut stream) = redis::Client::open(redis_url.as_str())
@@ -155,6 +159,7 @@ async fn run(config: Config) -> Result<()> {
         sink.subscribe("state_updates").await?;
 
         let callback_map = callback_map.clone();
+        let redis = redis.clone();
 
         tokio::task::spawn(async move {
             while let Some(msg) = stream.next().await {
@@ -172,7 +177,8 @@ async fn run(config: Config) -> Result<()> {
                         }
                     }
                     "state_updates" => {
-                        let state_update = serde_json::from_slice(msg.get_payload_bytes()).unwrap();
+                        let state_update: StateUpdate =
+                            serde_json::from_slice(msg.get_payload_bytes()).unwrap();
                         if tx.len() >= 10 {
                             tracing::error!(
                                 "Potentially dropping queued random numbers. Consider increasing \
@@ -181,11 +187,23 @@ async fn run(config: Config) -> Result<()> {
                         }
                         if tx.receiver_count() > 0 {
                             tracing::debug!("Broadcasting state update: {state_update:?}");
-                            tx.send(state_update)
-                                .expect("Receiver unexpectedly dropped");
+
+                            let pending_requests = redis
+                                .get()
+                                .await
+                                .unwrap()
+                                .lrange("pending_callbacks", 0, -1)
+                                .await
+                                .unwrap();
+
+                            let list = ListFragment { pending_requests }
+                                .render()
+                                .expect("Unable to render list fragment");
+
+                            tx.send(list).expect("Receiver unexpectedly dropped");
                         } else {
                             tracing::debug!(
-                                "Processing state update but no open subscribers: {state_update:?}"
+                                "Processed state update but no open subscribers: {state_update:?}"
                             );
                         }
                     }
@@ -209,10 +227,7 @@ async fn run(config: Config) -> Result<()> {
         // Very generous limit for submit requests
         .layer(tower_http::limit::RequestBodyLimitLayer::new(4096))
         .with_state(AppState {
-            redis: redis
-                .get_multiplexed_async_connection()
-                .await
-                .expect("Unable to open redis connection"),
+            redis,
             callback_map,
             state_updates,
         });
@@ -230,4 +245,10 @@ async fn run(config: Config) -> Result<()> {
     pubsub_task.abort();
 
     Ok(())
+}
+
+#[derive(Template)]
+#[template(path = "index.html", block = "waitlist")]
+struct ListFragment {
+    pending_requests: Vec<Uuid>,
 }

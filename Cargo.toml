@@ -12,8 +12,10 @@ rinja = "0.3.5"
 aws-config = "1.5.15"
 aws-sdk-s3 = "1.72.0"
 axum = { version = "0.8.1", features = ["macros", "ws"] }
+# Needed for redis 0.28 for ping command
+deadpool-redis = { git = "https://github.com/bikeshedder/deadpool", rev = "387f9e25d2d6197aab4ed6e3218cc6d29a2b35f9" }
 futures-util = "0.3.30"
-redis = { version = "0.28.2", features = ["tokio-comp", "uuid"] }
+redis = { version = "0.28.0", features = ["tokio-comp", "uuid"] }
 rubenvy = "0.1.1"
 sentry = { version = "0.36.0", default-features = false, features = [
     "anyhow",

@@ -7,20 +7,8 @@ use axum::{
     Router,
 };
 use futures_util::FutureExt;
-use redis::AsyncCommands as _;
-use rinja::Template;
-use uuid::Uuid;
 
-use crate::{
-    error::RrgError,
-    state::{AppState, StateUpdate},
-};
-
-#[derive(Template)]
-#[template(path = "index.html", block = "waitlist")]
-struct ListFragment {
-    pending_requests: Vec<Uuid>,
-}
+use crate::{error::RrgError, state::AppState};
 
 #[tracing::instrument]
 async fn ws_handler(
@@ -41,35 +29,22 @@ async fn ws_handler(
 async fn handle_socket(
     mut socket: WebSocket,
     who: SocketAddr,
-    mut state: AppState,
+    state: AppState,
 ) -> Result<(), RrgError> {
     let mut rx = state.state_updates.subscribe();
 
     // Whenever a state update occurs ("/get" or "/submit")
     while let Ok(update) = rx.recv().await {
-        match update {
-            // TODO do we still need separate added/removed?
-            StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
-                // Re-request the list of pending waiters
-                // TODO single waiter updates instead of sending entire list every time
-                let pending_requests = state.redis.lrange("pending_callbacks", 0, -1).await?;
-                // And re-render the HTML list
-                if socket
-                    .send(
-                        ListFragment { pending_requests }
-                            .render()
-                            .expect("Unable to render list fragment")
-                            .into(),
-                    )
-                    .await
-                    .is_err()
-                {
-                    tracing::debug!("Socket disconnected with: {:?}", who);
-                    break;
-                }
-            }
+        // Re-request the list of pending waiters
+        // TODO single waiter updates instead of sending entire list every time
+        // And re-render the HTML list
+        if socket.send(update.into()).await.is_err() {
+            tracing::debug!("Socket disconnected with: {:?}", who);
+            break;
         }
     }
+
+    tracing::warn!("websocket connection closed");
 
     Ok(())
 }

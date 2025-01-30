@@ -11,6 +11,9 @@ pub enum RrgError {
     Uuid(#[from] uuid::Error),
 
     #[error(transparent)]
+    Deadpool(#[from] deadpool_redis::PoolError),
+
+    #[error(transparent)]
     Redis(#[from] redis::RedisError),
 
     #[error(transparent)]

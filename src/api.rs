@@ -25,7 +25,7 @@ struct SubmitParams {
 
 #[tracing::instrument]
 async fn submit_random(
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
 ) -> Result<impl IntoResponse, RrgError> {
     #[derive(Template)]
@@ -52,8 +52,10 @@ async fn submit_random(
         ));
     }
 
+    let mut conn = state.redis.get().await?;
+
     // If there is someone waiting for a random number...
-    if let Some(guid) = state.redis.rpop("pending_callbacks", None).await? {
+    if let Some(guid) = conn.rpop("pending_callbacks", None).await? {
         tracing::debug!("Random number submitted: {random_number}, returning to client: {guid}");
         sentry::configure_scope(|scope| {
             scope.set_tag("random_number", &random_number);
@@ -61,26 +63,20 @@ async fn submit_random(
         });
 
         // Send the random number over the waiter's response channel
-        state
-            .redis
-            .publish::<_, _, ()>(
-                "callbacks",
-                serde_json::to_string(&(guid, &random_number)).unwrap(),
-            )
-            .await?;
+        conn.publish::<_, _, ()>(
+            "callbacks",
+            serde_json::to_string(&(guid, &random_number)).unwrap(),
+        )
+        .await?;
 
         // Indicate to any open provider portals that the user no longer needs a number
-        state
-            .redis
-            .publish::<_, _, ()>(
-                "state_updates",
-                serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
-            )
-            .await?;
+        conn.publish::<_, _, ()>(
+            "state_updates",
+            serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+        )
+        .await?;
 
-        state
-            .redis
-            .zincr::<_, _, _, ()>("counts", &random_number, 1)
+        conn.zincr::<_, _, _, ()>("counts", &random_number, 1)
             .await?;
     } else {
         tracing::debug!("Random number submitted for no active waiters: {random_number}");
@@ -112,7 +108,7 @@ async fn submit_random(
 #[tracing::instrument]
 async fn get_random(
     headers: HeaderMap,
-    State(mut state): State<AppState>,
+    State(state): State<AppState>,
 ) -> Result<Response, RrgError> {
     // Grab the request-id from request headers.
     // This is a header that is inserted by the server for request tracking,
@@ -121,37 +117,29 @@ async fn get_random(
     let guid = Uuid::parse_str(request_id_header)
         .inspect_err(|_| tracing::warn!("Invalid x-request-id '{request_id_header}'"))?;
 
+    let mut conn = state.redis.get().await?;
+
     let (tx, rx) = tokio::sync::oneshot::channel();
     state.callback_map.lock().unwrap().insert(guid, tx);
 
     // Register as a new waiter for a random number
-    state
-        .redis
-        .lpush::<_, _, ()>("pending_callbacks", guid)
-        .await?;
-    state
-        .redis
-        .publish::<_, _, ()>(
-            "state_updates",
-            serde_json::to_string(&StateUpdate::Added(guid))?,
-        )
-        .await?;
+    conn.lpush::<_, _, ()>("pending_callbacks", guid).await?;
+    conn.publish::<_, _, ()>(
+        "state_updates",
+        serde_json::to_string(&StateUpdate::Added(guid))?,
+    )
+    .await?;
 
     // Wait for the random number to be sent by a provider
     // TODO configurable timeout!
     let callback_result = timeout(Duration::from_secs(30), rx).await;
 
-    state
-        .redis
-        .lrem::<_, _, ()>("pending_callbacks", 1, guid)
-        .await?;
-    state
-        .redis
-        .publish::<_, _, ()>(
-            "state_updates",
-            serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
-        )
-        .await?;
+    conn.lrem::<_, _, ()>("pending_callbacks", 1, guid).await?;
+    conn.publish::<_, _, ()>(
+        "state_updates",
+        serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+    )
+    .await?;
 
     if let Ok(random_number) = callback_result {
         tracing::debug!("Returning random number to client: {random_number:?}");
@@ -165,9 +153,10 @@ async fn get_random(
     }
 }
 
-async fn health_check(State(mut state): State<AppState>) -> impl IntoResponse {
-    if state.redis.ping::<()>().await.is_err() {
-        std::process::abort();
+async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
+    let mut conn = state.redis.get().await.unwrap();
+    if conn.ping::<()>().await.is_err() {
+        StatusCode::INTERNAL_SERVER_ERROR
     } else {
         StatusCode::OK
     }

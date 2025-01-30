@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     extract::State,
     response::{Html, IntoResponse},
@@ -5,19 +7,28 @@ use axum::{
     Router,
 };
 use axum_extra::extract::Host;
-use redis::AsyncCommands as _;
+use redis::{cmd, AsyncCommands as _};
 use rinja::Template;
 use uuid::Uuid;
 
 use crate::{error::RrgError, state::AppState};
 
 #[tracing::instrument]
-async fn get_pending(mut conn: redis::aio::MultiplexedConnection) -> Result<Vec<Uuid>, RrgError> {
+async fn get_pending(redis: Arc<deadpool_redis::Pool>) -> Result<Vec<Uuid>, RrgError> {
     // get all members pending_callbacks list
-    let pending_requests = conn
-        .lrange("pending_callbacks", 0, -1)
+    let mut conn = redis.get().await?;
+    // let pending_requests = conn
+    //     .lrange("pending_callbacks", 0, -1)
+    //     .await
+    //     .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+
+    let pending_requests = cmd("LRANGE")
+        .arg("pending_callbacks")
+        .arg(0)
+        .arg(-1)
+        .query_async(&mut conn)
         .await
-        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+        .unwrap();
     Ok(pending_requests)
 }
 
@@ -47,9 +58,10 @@ async fn index(
 
 #[tracing::instrument]
 async fn get_top_n(
-    mut conn: redis::aio::MultiplexedConnection,
+    redis: Arc<deadpool_redis::Pool>,
     n: isize,
 ) -> Result<Vec<(String, f64)>, RrgError> {
+    let mut conn = redis.get().await?;
     // Get the top n values with the highest scores along with their scores
     let top_n = conn
         .zrevrange_withscores("counts", 0, n)

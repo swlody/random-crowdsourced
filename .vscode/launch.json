@@ -7,8 +7,18 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Launch",
-            "program": "${workspaceFolder}/target/debug/random-crowdsourced",
+            "name": "Debug executable 'random-crowdsourced'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=random-crowdsourced",
+                    "--package=random-crowdsourced"
+                ],
+                "filter": {
+                    "name": "random-crowdsourced",
+                    "kind": "bin"
+                }
+            },
             "args": [],
             "cwd": "${workspaceFolder}"
         },
