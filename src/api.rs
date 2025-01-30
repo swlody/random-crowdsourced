@@ -40,12 +40,15 @@ async fn submit_random(
         // Keep track of users who are being mean!
         sentry::configure_scope(|scope| scope.set_tag("naughty_user", "true"));
 
-        return Ok(Html(
-            InputFieldTemplate {
-                classes: r#"class="error" classes="remove error""#,
-                context: "Bad!",
-            }
-            .render()?,
+        return Ok((
+            StatusCode::BAD_REQUEST,
+            Html(
+                InputFieldTemplate {
+                    classes: r#"class="error" classes="remove error""#,
+                    context: "Bad!",
+                }
+                .render()?,
+            ),
         ));
     }
 
@@ -82,21 +85,27 @@ async fn submit_random(
     } else {
         tracing::debug!("Random number submitted for no active waiters: {random_number}");
 
-        return Ok(Html(
-            InputFieldTemplate {
-                classes: r#"class="warning" classes="remove warning""#,
-                context: "Nobody got your number!",
-            }
-            .render()?,
+        return Ok((
+            StatusCode::OK,
+            Html(
+                InputFieldTemplate {
+                    classes: r#"class="warning" classes="remove warning""#,
+                    context: "Nobody got your number!",
+                }
+                .render()?,
+            ),
         ));
     }
 
-    return Ok(Html(
-        InputFieldTemplate {
-            classes: r#"class="success" classes="remove success""#,
-            context: "Thanks!",
-        }
-        .render()?,
+    return Ok((
+        StatusCode::OK,
+        Html(
+            InputFieldTemplate {
+                classes: r#"class="success" classes="remove success""#,
+                context: "Thanks!",
+            }
+            .render()?,
+        ),
     ));
 }
 
