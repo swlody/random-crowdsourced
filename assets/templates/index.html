@@ -13,12 +13,11 @@
           <input
             id="random-input"
             name="random_number"
-            type="number"
             hx-ext="class-tools"
             {{ classes|safe }}
           />
         {% else %}
-          <input id="random-input" name="random_number" type="number" />
+          <input id="random-input" name="random_number" />
         {% endif %}
         <button id="submit-button" type="submit">Send random number</button>
       </div>
