@@ -20,11 +20,11 @@ primary_region = 'iad'
   processes = ['app']
 
 [[http_service.checks]]
-  grace_period = 5000
+  grace_period = "5s"
   interval = "5m"
   method = "GET"
   protocol = "https"
-  timeout = 1000
+  timeout = "1s"
   path = "/"
 
 [http_service.checks.headers]
