@@ -30,9 +30,9 @@ async fn submit_random(
 ) -> Result<impl IntoResponse, RrgError> {
     #[derive(Template)]
     #[template(path = "index.html", block = "input_field")]
-    struct InputFieldTemplate {
-        classes: String,
-        context: String,
+    struct InputFieldTemplate<'a> {
+        classes: &'a str,
+        context: &'a str,
     }
 
     if random_number.len() > 50 || BANNED_NUMBERS.get().unwrap().contains(&random_number) {
@@ -42,8 +42,8 @@ async fn submit_random(
 
         return Ok(Html(
             InputFieldTemplate {
-                classes: r#"class="error" classes="remove error""#.to_string(),
-                context: "Bad!".to_string(),
+                classes: r#"class="error" classes="remove error""#,
+                context: "Bad!",
             }
             .render()?,
         ));
@@ -84,8 +84,8 @@ async fn submit_random(
 
         return Ok(Html(
             InputFieldTemplate {
-                classes: r#"class="warning" classes="remove warning""#.to_string(),
-                context: "Nobody got your number!".to_string(),
+                classes: r#"class="warning" classes="remove warning""#,
+                context: "Nobody got your number!",
             }
             .render()?,
         ));
@@ -93,8 +93,8 @@ async fn submit_random(
 
     return Ok(Html(
         InputFieldTemplate {
-            classes: r#"class="success" classes="remove success""#.to_string(),
-            context: "Thanks!".to_string(),
+            classes: r#"class="success" classes="remove success""#,
+            context: "Thanks!",
         }
         .render()?,
     ));
