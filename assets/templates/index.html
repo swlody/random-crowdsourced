@@ -39,9 +39,9 @@
   </p>
   <div hx-ext="ws" ws-connect="/ws">
     {% block waitlist %}
-      <ul id="waitlist" hx-swap-oob="outerHTML">
+      <ul id="waitlist" hx-swap-oob="true">
         {% for client in pending_requests %}
-          <li>{{ client }}</li>
+          <li id="guid-{{ client }}">{{ client }}</li>
         {% endfor %}
       </ul>
     {% endblock %}

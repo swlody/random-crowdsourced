@@ -20,7 +20,6 @@ use deadpool_redis::Runtime;
 use error::RrgError;
 use futures_util::StreamExt as _;
 use layers::AddLayers as _;
-use redis::AsyncCommands as _;
 use rinja::Template;
 use secrecy::{ExposeSecret as _, SecretString};
 use state::{AppState, StateUpdate, BANNED_NUMBERS};
@@ -159,7 +158,6 @@ async fn run(config: Config) -> Result<()> {
         sink.subscribe("state_updates").await?;
 
         let callback_map = callback_map.clone();
-        let redis = redis.clone();
 
         tokio::task::spawn(async move {
             while let Some(msg) = stream.next().await {
@@ -188,19 +186,22 @@ async fn run(config: Config) -> Result<()> {
                         if tx.receiver_count() > 0 {
                             tracing::debug!("Broadcasting state update: {state_update:?}");
 
-                            let pending_requests = redis
-                                .get()
-                                .await
-                                .unwrap()
-                                .lrange("pending_callbacks", 0, -1)
-                                .await
-                                .unwrap();
-
-                            let list = ListFragment { pending_requests }
+                            let list_item = match state_update {
+                                StateUpdate::Added(guid) => ListItemFragment {
+                                    client: guid,
+                                    delete: false,
+                                }
                                 .render()
-                                .expect("Unable to render list fragment");
+                                .unwrap(),
+                                StateUpdate::Removed(guid) => ListItemFragment {
+                                    client: guid,
+                                    delete: true,
+                                }
+                                .render()
+                                .unwrap(),
+                            };
 
-                            tx.send(list).expect("Receiver unexpectedly dropped");
+                            tx.send(list_item).expect("Receiver unexpectedly dropped");
                         } else {
                             tracing::debug!(
                                 "Processed state update but no open subscribers: {state_update:?}"
@@ -248,7 +249,8 @@ async fn run(config: Config) -> Result<()> {
 }
 
 #[derive(Template)]
-#[template(path = "index.html", block = "waitlist")]
-struct ListFragment {
-    pending_requests: Vec<Uuid>,
+#[template(path = "list_item.html")]
+struct ListItemFragment {
+    client: Uuid,
+    delete: bool,
 }

@@ -14,18 +14,6 @@
   <script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
   <script src="https://unpkg.com/htmx-ext-class-tools@2.0.1/class-tools.js"></script>
   <script src="https://unpkg.com/htmx-ext-json-enc@2.0.1/json-enc.js"></script>
-  <script>
-    document.addEventListener('htmx:wsOpen', (evt) => {
-      let socket = evt.detail.socketWrapper;
-      window.addEventListener("beforeunload", () => {
-        socket.close();
-      });
-    });
-
-    document.addEventListener('htmx:wsClose', (evt) => {
-      console.log("closed!");
-    })
-  </script>
 </head>
 
 <body>

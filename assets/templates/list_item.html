@@ -1,0 +1,7 @@
+{% if delete %}
+  <li id="guid-{{ client }}" hx-swap-oob="delete">{{ client }}</li>
+{% else %}
+  <ul id="waitlist" hx-swap-oob="beforeend:#waitlist">
+    <li id="guid-{{ client }}">{{ client }}</li>
+  </ul>
+{% endif %}
