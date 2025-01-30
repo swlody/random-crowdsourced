@@ -167,7 +167,7 @@ async fn get_random(
 
 async fn health_check(State(mut state): State<AppState>) -> impl IntoResponse {
     if state.redis.ping::<()>().await.is_err() {
-        StatusCode::INTERNAL_SERVER_ERROR
+        std::process::abort();
     } else {
         StatusCode::OK
     }
