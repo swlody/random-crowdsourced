@@ -165,9 +165,17 @@ async fn get_random(
     }
 }
 
+async fn health_check(State(mut state): State<AppState>) -> impl IntoResponse {
+    if state.redis.ping::<()>().await.is_err() {
+        StatusCode::INTERNAL_SERVER_ERROR
+    } else {
+        StatusCode::OK
+    }
+}
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/get", get(get_random))
         .route("/submit", post(submit_random))
-        .route("/health", get(|| async { StatusCode::OK }))
+        .route("/health", get(health_check))
 }

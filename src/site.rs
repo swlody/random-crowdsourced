@@ -33,9 +33,7 @@ async fn index(
         host: String,
     }
 
-    let pending_requests = get_pending(state.redis)
-        .await
-        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+    let pending_requests = get_pending(state.redis).await?;
 
     Ok(Html(
         IndexTemplate {

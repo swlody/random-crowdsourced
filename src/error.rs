@@ -29,29 +29,27 @@ pub enum RrgError {
     RenderingInternalError(#[from] anyhow::Error),
 }
 
+#[derive(Template)]
+#[template(path = "404.html")]
+pub struct NotFoundTemplate;
+
+#[derive(Template)]
+#[template(path = "something_went_wrong.html")]
+pub struct SomethingWentWrongTemplate;
+
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
         match self {
             Self::Uuid(_) | Self::ToStr(_) => StatusCode::BAD_REQUEST.into_response(),
-            Self::NotFound => {
-                #[derive(Template)]
-                #[template(path = "404.html")]
-                pub struct NotFoundTemplate;
-
-                NotFoundTemplate.render().map_or_else(
-                    |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-                    |body| Html(body).into_response(),
-                )
-            }
+            Self::NotFound => NotFoundTemplate.render().map_or_else(
+                |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                |body| (StatusCode::NOT_FOUND, Html(body)).into_response(),
+            ),
             Self::RenderingInternalError(e) => {
-                #[derive(Template)]
-                #[template(path = "something_went_wrong.html")]
-                pub struct SomethingWentWrongTemplate;
-
                 tracing::error!("Error occurred while rendering page: {e:?}");
                 SomethingWentWrongTemplate.render().map_or_else(
                     |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-                    |body| Html(body).into_response(),
+                    |body| (StatusCode::INTERNAL_SERVER_ERROR, Html(body)).into_response(),
                 )
             }
             _ => {

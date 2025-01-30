@@ -29,6 +29,7 @@ use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _
 struct Config {
     log_level: Option<tracing::metadata::Level>,
     trace_sample_rate: Option<f32>,
+    error_sample_rate: Option<f32>,
     broadcast_capacity: Option<usize>,
 
     sentry_dsn: SecretString,
@@ -38,6 +39,14 @@ struct Config {
 impl Config {
     fn from_environment() -> Self {
         Self {
+            broadcast_capacity: std::env::var("RRG_BROADCAST_CAPACITY")
+                .ok()
+                .map(|capacity| {
+                    capacity
+                        .parse()
+                        .unwrap_or_else(|_| panic!("Invalid broadcast capacity: {capacity}"))
+                }),
+
             log_level: std::env::var("RRG_LOG_LEVEL").ok().map(|level| {
                 Level::from_str(level.as_str())
                     .unwrap_or_else(|_| panic!("Invalid value for RRG_LOG_LEVEL: {level}"))
@@ -53,17 +62,19 @@ impl Config {
                     rate
                 }),
 
+            error_sample_rate: std::env::var("RRG_SENTRY_ERROR_SAMPLE_RATE")
+                .ok()
+                .map(|rate| {
+                    let rate = rate.parse().unwrap_or_else(|_| {
+                        panic!("Invalid value for RRG_SENTRY_TRACING_SAMPLE_RATE: {rate}")
+                    });
+                    assert!((0.0..=1.0).contains(&rate));
+                    rate
+                }),
+
             sentry_dsn: SecretString::from(
                 std::env::var("SENTRY_DSN").expect("Missing SENTRY_DSN"),
             ),
-
-            broadcast_capacity: std::env::var("RRG_BROADCAST_CAPACITY")
-                .ok()
-                .map(|capacity| {
-                    capacity
-                        .parse()
-                        .unwrap_or_else(|_| panic!("Invalid broadcast capacity: {capacity}"))
-                }),
 
             redis_url: std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL"),
         }
@@ -88,6 +99,7 @@ fn main() -> Result<()> {
         config.sentry_dsn.expose_secret(),
         sentry::ClientOptions {
             release: sentry::release_name!(),
+            sample_rate: config.error_sample_rate.unwrap_or(1.0),
             traces_sample_rate: config.trace_sample_rate.unwrap_or(0.1),
             attach_stacktrace: true,
             ..Default::default()
