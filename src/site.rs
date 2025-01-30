@@ -1,42 +1,50 @@
-use askama::Template;
 use axum::{
-    extract::{Host, State},
-    response::{IntoResponse, Response},
+    extract::State,
+    response::{Html, IntoResponse},
     routing::get,
     Router,
 };
+use axum_extra::extract::Host;
 use redis::AsyncCommands as _;
+use rinja::Template;
 use uuid::Uuid;
 
 use crate::{error::RrgError, state::AppState};
 
-#[derive(Template)]
-#[template(path = "index.html")]
-struct IndexTemplate {
-    pending_requests: Vec<Uuid>,
-    host: String,
-}
-
 #[tracing::instrument]
 async fn get_pending(mut conn: redis::aio::MultiplexedConnection) -> Result<Vec<Uuid>, RrgError> {
-    let pending_requests = conn.lrange("pending_callbacks", 0, -1).await?;
+    // get all members pending_callbacks list
+    let pending_requests = conn
+        .lrange("pending_callbacks", 0, -1)
+        .await
+        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
     Ok(pending_requests)
 }
 
 #[tracing::instrument]
-async fn index(Host(host): Host, State(state): State<AppState>) -> Result<Response, RrgError> {
-    let pending_requests = get_pending(state.redis).await?;
-    Ok(IndexTemplate {
-        pending_requests,
-        host,
+async fn index(
+    Host(host): Host,
+    State(state): State<AppState>,
+) -> Result<impl IntoResponse, RrgError> {
+    #[derive(Template)]
+    #[template(path = "index.html")]
+    struct IndexTemplate {
+        pending_requests: Vec<Uuid>,
+        host: String,
     }
-    .into_response())
-}
 
-#[derive(Template)]
-#[template(path = "stats.html")]
-struct StatsTemplate {
-    top_n: Vec<(String, f64)>,
+    let pending_requests = get_pending(state.redis)
+        .await
+        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+
+    Ok(Html(
+        IndexTemplate {
+            pending_requests,
+            host,
+        }
+        .render()
+        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?,
+    ))
 }
 
 #[tracing::instrument]
@@ -44,25 +52,38 @@ async fn get_top_n(
     mut conn: redis::aio::MultiplexedConnection,
     n: isize,
 ) -> Result<Vec<(String, f64)>, RrgError> {
-    Ok(conn.zrevrange_withscores("counts", 0, n).await?)
+    // Get the top n values with the highest scores along with their scores
+    let top_n = conn
+        .zrevrange_withscores("counts", 0, n)
+        .await
+        .map_err(|e| RrgError::RenderingInternalError(anyhow::Error::new(e)))?;
+    Ok(top_n)
 }
 
 #[tracing::instrument]
-async fn stats(State(state): State<AppState>) -> Result<Response, RrgError> {
+async fn stats(State(state): State<AppState>) -> Result<impl IntoResponse, RrgError> {
+    #[derive(Template)]
+    #[template(path = "stats.html")]
+    struct StatsTemplate {
+        top_n: Vec<(String, f64)>,
+    }
+
     let top_10 = get_top_n(state.redis, 9).await?;
 
-    Ok(StatsTemplate { top_n: top_10 }.into_response())
+    Ok(Html(StatsTemplate { top_n: top_10 }.render().map_err(
+        |e| RrgError::RenderingInternalError(anyhow::Error::new(e)),
+    )?))
 }
 
-// TODO it's a bit weird to create a new struct for every HTML template file
-// and also to have to add a new route for each HTML template file?
-#[derive(Template)]
-#[template(path = "about.html")]
-struct AboutTemplate;
-
 #[tracing::instrument]
-async fn about() -> impl IntoResponse {
-    AboutTemplate
+async fn about() -> Result<impl IntoResponse, RrgError> {
+    #[derive(Template)]
+    #[template(path = "about.html")]
+    struct AboutTemplate;
+
+    Ok(Html(AboutTemplate.render().map_err(|e| {
+        RrgError::RenderingInternalError(anyhow::Error::new(e))
+    })?))
 }
 
 pub fn routes() -> Router<AppState> {

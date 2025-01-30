@@ -1,24 +1,50 @@
 {% extends "layout.html" %}
 
 {% block main %}
-  <form id="entry-form" hx-post="api/submit" hx-ext="json-enc" hx-swap="none">
-    <input name="random_number" type="number" />
-    <button type="submit">Send random number</button>
+  <form
+    id="entry-form"
+    hx-post="api/submit"
+    hx-ext="json-enc"
+    hx-swap="innerHTML"
+  >
+    {% block input_field %}
+      <div>
+        {% if classes is defined %}
+          <input
+            id="random-input"
+            name="random_number"
+            type="number"
+            hx-ext="class-tools"
+            {{ classes|safe }}
+          />
+        {% else %}
+          <input
+            id="random-input"
+            name="random_number"
+            type="number"
+            class="base"
+          />
+        {% endif %}
+        <button id="submit-button" type="submit">Send random number</button>
+      </div>
+      {% if context is defined %}
+        <p>{{ context }}</p>
+      {% endif %}
+    {% endblock %}
   </form>
 
   <p><code>curl -L {{ host }}/api/get</code> for a random number.</p>
 
+  <p>
+    {% if pending_requests.is_empty() %}
+      Nobody needs a number right now!
+    {% else %}
+      Clients waiting for a number:
+    {% endif %}
+  </p>
   <div hx-ext="ws" ws-connect="/ws">
     {% block waitlist %}
       <ul id="waitlist" hx-swap-oob="outerHTML">
-        <p>
-          {% if pending_requests.is_empty() %}
-            Nobody needs a number right now!
-          {% else %}
-            Clients waiting for a number:
-          {% endif %}
-        </p>
-
         {% for client in pending_requests %}
           <li>{{ client }}</li>
         {% endfor %}

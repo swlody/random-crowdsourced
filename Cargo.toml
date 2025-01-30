@@ -8,18 +8,14 @@ debug = true
 
 [dependencies]
 anyhow = "1.0.89"
-askama = { git = "https://github.com/djc/askama", features = [
-    "with-axum",
-], rev = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
-askama-axum = { git = "https://github.com/djc/askama", package = "askama_axum", rev = "66169add86bfce25cd16a2dc58a4ea825aee2be4" }
+rinja = "0.3.5"
 aws-config = "1.5.15"
 aws-sdk-s3 = "1.71.0"
-axum = { version = "0.7.5", features = ["macros", "ws"] }
+axum = { version = "0.8.1", features = ["macros", "ws"] }
 futures-util = "0.3.30"
-redis = { version = "0.27.2", features = ["tokio-comp", "uuid"] }
+redis = { version = "0.28.2", features = ["tokio-comp", "uuid"] }
 rubenvy = "0.1.1"
-secrecy = "0.10.2"
-sentry = { version = "0.34.0", default-features = false, features = [
+sentry = { version = "0.36.0", default-features = false, features = [
     "anyhow",
     "backtrace",
     "contexts",
@@ -33,10 +29,17 @@ sentry = { version = "0.34.0", default-features = false, features = [
 ] }
 serde = "1.0.210"
 serde_json = "1.0.128"
-thiserror = "1.0.64"
+thiserror = "2.0.11"
 tokio = { version = "1.40.0", features = ["full", "time"] }
 tower = "0.5.1"
-tower-http = { version = "0.6.1", features = ["fs", "limit", "request-id", "trace", "util"] }
+tower-http = { version = "0.6.1", features = [
+    "fs",
+    "limit",
+    "request-id",
+    "trace",
+    "util",
+] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 uuid = { version = "1.10.0", features = ["v7"] }
+axum-extra = "0.10.0"

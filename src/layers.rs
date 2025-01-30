@@ -37,22 +37,22 @@ impl MakeRequestId for MakeRequestUuidV7 {
 }
 
 #[derive(Copy, Clone)]
-pub struct SentryRequestIdLayer;
+pub struct SentryInjectTagsLayer;
 
-impl<S> Layer<S> for SentryRequestIdLayer {
-    type Service = SentryRequestIdService<S>;
+impl<S> Layer<S> for SentryInjectTagsLayer {
+    type Service = SentryInjectTagsService<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        SentryRequestIdService { service }
+        SentryInjectTagsService { service }
     }
 }
 
 #[derive(Copy, Clone)]
-pub struct SentryRequestIdService<S> {
+pub struct SentryInjectTagsService<S> {
     service: S,
 }
 
-impl<S> Service<Request<Body>> for SentryRequestIdService<S>
+impl<S> Service<Request<Body>> for SentryInjectTagsService<S>
 where
     S: Service<Request<Body>>,
 {
@@ -65,57 +65,6 @@ where
     }
 
     fn call(&mut self, request: Request<Body>) -> Self::Future {
-        if let Some(request_id) = request
-            .headers()
-            .get("x-request-id")
-            .and_then(|header| header.to_str().ok())
-        {
-            sentry::configure_scope(|scope| {
-                scope.set_tag("request_id", request_id);
-            });
-        }
-        self.service.call(request)
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct SentryReportRequestSizeLayer;
-
-impl<S> Layer<S> for SentryReportRequestSizeLayer {
-    type Service = SentryReportRequestSizeService<S>;
-
-    fn layer(&self, service: S) -> Self::Service {
-        SentryReportRequestSizeService { service }
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct SentryReportRequestSizeService<S> {
-    service: S,
-}
-
-impl<S> Service<Request<Body>> for SentryReportRequestSizeService<S>
-where
-    S: Service<Request<Body>>,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
-
-    fn call(&mut self, request: Request<Body>) -> Self::Future {
-        if let Some(content_length) = request
-            .headers()
-            .get(header::CONTENT_LENGTH)
-            .and_then(|header| header.to_str().ok())
-        {
-            sentry::configure_scope(|scope| {
-                scope.set_tag("http.request.content_length", content_length);
-            });
-        }
         self.service.call(request)
     }
 }
@@ -143,6 +92,9 @@ fn convert_http_status_to_sentry_status(http_status: StatusCode) -> SpanStatus {
         StatusCode::NOT_IMPLEMENTED => SpanStatus::Unimplemented,
         StatusCode::SERVICE_UNAVAILABLE => SpanStatus::Unavailable,
 
+        // TODO remove if switching which status code is used for timeouts
+        StatusCode::REQUEST_TIMEOUT => SpanStatus::DeadlineExceeded,
+
         other => {
             let code = other.as_u16();
             if (100..=399).contains(&code) {
@@ -158,6 +110,7 @@ fn convert_http_status_to_sentry_status(http_status: StatusCode) -> SpanStatus {
     }
 }
 
+// Middleware to send certain values to sentry
 #[derive(Clone)]
 pub struct SentryReportStatusCodeService<S> {
     inner: S,
@@ -177,8 +130,27 @@ where
         self.inner.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
-        let future = self.inner.call(req);
+    fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
+        let request_id = request
+            .headers()
+            .get("x-request-id")
+            .and_then(|header| header.to_str().ok());
+
+        let content_length = request
+            .headers()
+            .get(header::CONTENT_LENGTH)
+            .and_then(|header| header.to_str().ok());
+
+        sentry::configure_scope(|scope| {
+            if let Some(content_length) = content_length {
+                scope.set_tag("http.request.content_length", content_length);
+            }
+            if let Some(request_id) = request_id {
+                scope.set_tag("request_id", request_id);
+            }
+        });
+
+        let future = self.inner.call(request);
 
         Box::pin(async move {
             let response = future.await?;
@@ -189,7 +161,9 @@ where
 
             // Report status code to Sentry
             sentry::configure_scope(|scope| {
-                scope.get_span().map(|span| span.set_status(sentry_status));
+                if let Some(span) = scope.get_span() {
+                    span.set_status(sentry_status);
+                }
                 scope.set_tag(
                     "http.response.status_code",
                     http_status.as_u16().to_string(),
@@ -222,9 +196,7 @@ where
         let sentry_service = ServiceBuilder::new()
             .layer(NewSentryLayer::new_from_top())
             .layer(SentryHttpLayer::with_transaction())
-            .layer(SentryRequestIdLayer)
-            .layer(SentryReportRequestSizeLayer)
-            .layer(SentryReportStatusCodeLayer);
+            .layer(SentryInjectTagsLayer);
         self.layer(sentry_service)
     }
 }

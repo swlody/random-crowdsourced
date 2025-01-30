@@ -1,6 +1,5 @@
 use std::net::SocketAddr;
 
-use askama::Template;
 use axum::{
     extract::{ws::WebSocket, ConnectInfo, State, WebSocketUpgrade},
     response::IntoResponse,
@@ -9,6 +8,7 @@ use axum::{
 };
 use futures_util::FutureExt;
 use redis::AsyncCommands as _;
+use rinja::Template;
 use uuid::Uuid;
 
 use crate::{
@@ -45,14 +45,22 @@ async fn handle_socket(
 ) -> Result<(), RrgError> {
     let mut rx = state.state_updates.subscribe();
 
+    // Whenever a state update occurs ("/get" or "/submit")
     while let Ok(update) = rx.recv().await {
         match update {
             // TODO do we still need separate added/removed?
             StateUpdate::Added(_guid) | StateUpdate::Removed(_guid) => {
+                // Re-request the list of pending waiters
                 // TODO single waiter updates instead of sending entire list every time
                 let pending_requests = state.redis.lrange("pending_callbacks", 0, -1).await?;
+                // And re-render the HTML list
                 if socket
-                    .send(ListFragment { pending_requests }.render().unwrap().into())
+                    .send(
+                        ListFragment { pending_requests }
+                            .render()
+                            .expect("Unable to render list fragment")
+                            .into(),
+                    )
                     .await
                     .is_err()
                 {

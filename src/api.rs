@@ -3,11 +3,12 @@ use std::time::Duration;
 use axum::{
     extract::State,
     http::{header, HeaderMap, StatusCode},
-    response::{IntoResponse as _, Response},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use redis::AsyncCommands as _;
+use rinja::Template;
 use serde::Deserialize;
 use tokio::time::timeout;
 use uuid::Uuid;
@@ -26,10 +27,26 @@ struct SubmitParams {
 async fn submit_random(
     State(mut state): State<AppState>,
     Json(SubmitParams { random_number }): Json<SubmitParams>,
-) -> Result<Response, RrgError> {
+) -> Result<impl IntoResponse, RrgError> {
+    #[derive(Template)]
+    #[template(path = "index.html", block = "input_field")]
+    struct InputFieldTemplate {
+        classes: String,
+        context: String,
+    }
+
     if random_number.len() > 50 || BANNED_NUMBERS.get().unwrap().contains(&random_number) {
         tracing::warn!("Ignoring banned number");
-        return Err(RrgError::BadRequest);
+        // Keep track of users who are being mean!
+        sentry::configure_scope(|scope| scope.set_tag("naughty_user", "true"));
+
+        return Ok(Html(
+            InputFieldTemplate {
+                classes: r#"class="error" classes="remove error""#.to_string(),
+                context: "Bad!".to_string(),
+            }
+            .render()?,
+        ));
     }
 
     // If there is someone waiting for a random number...
@@ -37,10 +54,10 @@ async fn submit_random(
         tracing::debug!("Random number submitted: {random_number}, returning to client: {guid}");
         sentry::configure_scope(|scope| {
             scope.set_tag("random_number", &random_number);
-            scope.set_tag("associated_guid", &guid);
+            scope.set_tag("associated_guid", guid);
         });
 
-        // Send the random number over the response channel
+        // Send the random number over the waiter's response channel
         state
             .redis
             .publish::<_, _, ()>(
@@ -64,9 +81,23 @@ async fn submit_random(
             .await?;
     } else {
         tracing::debug!("Random number submitted for no active waiters: {random_number}");
+
+        return Ok(Html(
+            InputFieldTemplate {
+                classes: r#"class="warning" classes="remove warning""#.to_string(),
+                context: "Nobody got your number!".to_string(),
+            }
+            .render()?,
+        ));
     }
 
-    Ok(StatusCode::OK.into_response())
+    return Ok(Html(
+        InputFieldTemplate {
+            classes: r#"class="success" classes="remove success""#.to_string(),
+            context: "Thanks!".to_string(),
+        }
+        .render()?,
+    ));
 }
 
 #[tracing::instrument]
@@ -98,7 +129,7 @@ async fn get_random(
         .await?;
 
     // Wait for the random number to be sent by a provider
-    // TODO configurable timeout! And/or let user specify with request header
+    // TODO configurable timeout!
     let callback_result = timeout(Duration::from_secs(30), rx).await;
 
     state
@@ -115,11 +146,12 @@ async fn get_random(
 
     if let Ok(random_number) = callback_result {
         tracing::debug!("Returning random number to client: {random_number:?}");
-        let random_number = random_number.unwrap();
+        let random_number = random_number.expect("Sender unexpectedly dropped");
         return Ok((StatusCode::OK, format!("{random_number}\n",)).into_response());
     } else {
         tracing::debug!("Timed out waiting for random number");
         state.callback_map.lock().unwrap().remove(&guid);
+        // TODO is REQUEST_TIMEOUT the right status code? should maybe be 503
         return Ok(([(header::CONNECTION, "close")], StatusCode::REQUEST_TIMEOUT).into_response());
     }
 }

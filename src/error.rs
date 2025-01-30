@@ -1,7 +1,8 @@
 use axum::{
     http::StatusCode,
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
 };
+use rinja::Template;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -18,17 +19,45 @@ pub enum RrgError {
     #[error(transparent)]
     ToStr(#[from] axum::http::header::ToStrError),
 
-    #[error("Bad request")]
-    BadRequest,
+    #[error(transparent)]
+    Render(#[from] rinja::Error),
+
+    #[error("Not found")]
+    NotFound,
+
+    #[error(transparent)]
+    RenderingInternalError(#[from] anyhow::Error),
 }
 
 impl IntoResponse for RrgError {
     fn into_response(self) -> Response {
-        if let Self::Uuid(_) | Self::ToStr(_) | Self::BadRequest = self {
-            StatusCode::BAD_REQUEST.into_response()
-        } else {
-            tracing::error!("{:?}", self);
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        match self {
+            Self::Uuid(_) | Self::ToStr(_) => StatusCode::BAD_REQUEST.into_response(),
+            Self::NotFound => {
+                #[derive(Template)]
+                #[template(path = "404.html")]
+                pub struct NotFoundTemplate;
+
+                NotFoundTemplate.render().map_or_else(
+                    |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                    |body| Html(body).into_response(),
+                )
+            }
+            Self::RenderingInternalError(e) => {
+                #[derive(Template)]
+                #[template(path = "something_went_wrong.html")]
+                pub struct SomethingWentWrongTemplate;
+
+                tracing::error!("Error occurred while rendering page: {e:?}");
+                SomethingWentWrongTemplate.render().map_or_else(
+                    |_| StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+                    |body| Html(body).into_response(),
+                )
+            }
+            _ => {
+                tracing::error!("{:?}", self);
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
         }
     }
 }
