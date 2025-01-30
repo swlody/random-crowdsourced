@@ -37,64 +37,22 @@ impl MakeRequestId for MakeRequestUuidV7 {
 }
 
 #[derive(Copy, Clone)]
-pub struct SentryRequestIdLayer;
+pub struct SentryReportRequestHeadersLayer;
 
-impl<S> Layer<S> for SentryRequestIdLayer {
-    type Service = SentryRequestIdService<S>;
+impl<S> Layer<S> for SentryReportRequestHeadersLayer {
+    type Service = SentryReportRequestHeadersService<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        SentryRequestIdService { service }
+        SentryReportRequestHeadersService { service }
     }
 }
 
 #[derive(Copy, Clone)]
-pub struct SentryRequestIdService<S> {
+pub struct SentryReportRequestHeadersService<S> {
     service: S,
 }
 
-impl<S> Service<Request<Body>> for SentryRequestIdService<S>
-where
-    S: Service<Request<Body>>,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    type Future = S::Future;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
-
-    fn call(&mut self, request: Request<Body>) -> Self::Future {
-        if let Some(request_id) = request
-            .headers()
-            .get("x-request-id")
-            .and_then(|header| header.to_str().ok())
-        {
-            sentry::configure_scope(|scope| {
-                scope.set_tag("request_id", request_id);
-            });
-        }
-        self.service.call(request)
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct SentryReportRequestSizeLayer;
-
-impl<S> Layer<S> for SentryReportRequestSizeLayer {
-    type Service = SentryReportRequestSizeService<S>;
-
-    fn layer(&self, service: S) -> Self::Service {
-        SentryReportRequestSizeService { service }
-    }
-}
-
-#[derive(Copy, Clone)]
-pub struct SentryReportRequestSizeService<S> {
-    service: S,
-}
-
-impl<S> Service<Request<Body>> for SentryReportRequestSizeService<S>
+impl<S> Service<Request<Body>> for SentryReportRequestHeadersService<S>
 where
     S: Service<Request<Body>>,
 {
@@ -116,6 +74,17 @@ where
                 scope.set_tag("http.request.content_length", content_length);
             });
         }
+
+        if let Some(request_id) = request
+            .headers()
+            .get("x-request-id")
+            .and_then(|header| header.to_str().ok())
+        {
+            sentry::configure_scope(|scope| {
+                scope.set_tag("request_id", request_id);
+            });
+        }
+
         self.service.call(request)
     }
 }
@@ -225,8 +194,7 @@ where
         let sentry_service = ServiceBuilder::new()
             .layer(NewSentryLayer::new_from_top())
             .layer(SentryHttpLayer::with_transaction())
-            .layer(SentryRequestIdLayer)
-            .layer(SentryReportRequestSizeLayer)
+            .layer(SentryReportRequestHeadersLayer)
             .layer(SentryReportStatusCodeLayer);
         self.layer(sentry_service)
     }
