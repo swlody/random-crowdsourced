@@ -11,6 +11,7 @@ use std::{
     net::SocketAddr,
     str::FromStr,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use anyhow::Result;
@@ -29,6 +30,7 @@ use tower::ServiceBuilder;
 use tower_http::{
     limit::RequestBodyLimitLayer,
     services::ServeDir,
+    timeout::TimeoutLayer,
     trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
     ServiceBuilderExt as _,
 };
@@ -242,7 +244,8 @@ async fn run(config: Config) -> Result<()> {
                 )
                 .propagate_x_request_id()
                 // Very generous limit for submit requests
-                .layer(RequestBodyLimitLayer::new(4096)),
+                .layer(RequestBodyLimitLayer::new(4096))
+                .layer(TimeoutLayer::new(Duration::from_secs(30))),
         )
         .with_state(AppState {
             redis,

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use axum::{
     extract::State,
-    http::{header, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -10,7 +10,6 @@ use axum::{
 use redis::AsyncCommands as _;
 use rinja::Template;
 use serde::Deserialize;
-use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::{
@@ -133,20 +132,35 @@ async fn get_random(
     let (tx, rx) = tokio::sync::oneshot::channel();
     state.callback_map.lock().unwrap().insert(guid, tx);
 
+    // Remove guid from pending_callbacks on request timeout or cancellation
+    let state = state.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        let mut conn = state.redis.get().await.unwrap();
+        conn.lrem::<_, _, ()>("pending_callbacks", 1, guid)
+            .await
+            .unwrap();
+        conn.publish::<_, _, ()>(
+            "state_updates",
+            serde_json::to_string(&StateUpdate::Removed(guid)).unwrap(),
+        )
+        .await
+        .unwrap();
+    });
+
     // Register as a new waiter for a random number
     conn.lpush::<_, _, ()>("pending_callbacks", guid)
         .await
         .map_err(anyhow::Error::from)?;
     conn.publish::<_, _, ()>(
         "state_updates",
-        serde_json::to_string(&StateUpdate::Added(guid)).map_err(anyhow::Error::from)?,
+        serde_json::to_string(&StateUpdate::Added(guid)).unwrap(),
     )
     .await
     .map_err(anyhow::Error::from)?;
 
     // Wait for the random number to be sent by a provider
-    // TODO configurable timeout!
-    let callback_result = timeout(Duration::from_secs(30), rx).await;
+    let callback_result = rx.await;
 
     conn.lrem::<_, _, ()>("pending_callbacks", 1, guid)
         .await
@@ -158,16 +172,9 @@ async fn get_random(
     .await
     .map_err(anyhow::Error::from)?;
 
-    if let Ok(random_number) = callback_result {
-        tracing::debug!("Returning random number to client: {random_number:?}");
-        let random_number = random_number.expect("Sender unexpectedly dropped");
-        return Ok((StatusCode::OK, format!("{random_number}\n",)).into_response());
-    } else {
-        tracing::debug!("Timed out waiting for random number");
-        state.callback_map.lock().unwrap().remove(&guid);
-        // TODO is REQUEST_TIMEOUT the right status code? should maybe be 503
-        return Ok(([(header::CONNECTION, "close")], StatusCode::REQUEST_TIMEOUT).into_response());
-    }
+    let random_number = callback_result.expect("Sender unexpectedly dropped");
+    tracing::debug!("Returning random number to client: {random_number:?}");
+    Ok((StatusCode::OK, format!("{random_number}\n",)).into_response())
 }
 
 async fn health_check(State(state): State<AppState>) -> impl IntoResponse {
