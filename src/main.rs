@@ -1,6 +1,6 @@
 mod api;
 mod error;
-mod layers;
+mod middleware;
 mod site;
 mod state;
 mod websocket;
@@ -19,12 +19,19 @@ use axum::Router;
 use deadpool_redis::Runtime;
 use error::RrgError;
 use futures_util::StreamExt as _;
-use layers::AddLayers as _;
+use middleware::{MakeRequestUuidV7, SentryReportRequestInfoLayer};
 use rinja::Template;
 use secrecy::{ExposeSecret as _, SecretString};
+use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use state::{AppState, StateUpdate, BANNED_NUMBERS};
 use tokio::net::TcpListener;
-use tower_http::services::ServeDir;
+use tower::ServiceBuilder;
+use tower_http::{
+    limit::RequestBodyLimitLayer,
+    services::ServeDir,
+    trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer},
+    ServiceBuilderExt as _,
+};
 use tracing::Level;
 use tracing_subscriber::{layer::SubscriberExt as _, util::SubscriberInitExt as _};
 use uuid::Uuid;
@@ -222,11 +229,21 @@ async fn run(config: Config) -> Result<()> {
         .nest("/ws", websocket::routes())
         .nest_service("/static", ServeDir::new("assets/static"))
         .fallback(|| async { RrgError::NotFound })
-        // sentry needs to go before tracing otherwise the request-id doesn't get passed to sentry
-        .with_sentry_layer()
-        .with_tracing_layer()
-        // Very generous limit for submit requests
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(4096))
+        .layer(
+            ServiceBuilder::new()
+                .set_x_request_id(MakeRequestUuidV7)
+                .layer(NewSentryLayer::new_from_top())
+                .layer(SentryHttpLayer::with_transaction())
+                .layer(SentryReportRequestInfoLayer)
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(DefaultMakeSpan::new().include_headers(true))
+                        .on_response(DefaultOnResponse::new().include_headers(true)),
+                )
+                .propagate_x_request_id()
+                // Very generous limit for submit requests
+                .layer(RequestBodyLimitLayer::new(4096)),
+        )
         .with_state(AppState {
             redis,
             callback_map,
