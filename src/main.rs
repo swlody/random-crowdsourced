@@ -43,22 +43,15 @@ struct Config {
     trace_sample_rate: Option<f32>,
     error_sample_rate: Option<f32>,
     broadcast_capacity: Option<usize>,
+    request_timeout_seconds: Option<Duration>,
 
-    sentry_dsn: SecretString,
+    sentry_dsn: Option<SecretString>,
     redis_url: String,
 }
 
 impl Config {
     fn from_environment() -> Self {
         Self {
-            broadcast_capacity: std::env::var("RRG_BROADCAST_CAPACITY")
-                .ok()
-                .map(|capacity| {
-                    capacity
-                        .parse()
-                        .unwrap_or_else(|_| panic!("Invalid broadcast capacity: {capacity}"))
-                }),
-
             log_level: std::env::var("RRG_LOG_LEVEL").ok().map(|level| {
                 Level::from_str(level.as_str())
                     .unwrap_or_else(|_| panic!("Invalid value for RRG_LOG_LEVEL: {level}"))
@@ -84,9 +77,24 @@ impl Config {
                     rate
                 }),
 
-            sentry_dsn: SecretString::from(
-                std::env::var("SENTRY_DSN").expect("Missing SENTRY_DSN"),
-            ),
+            broadcast_capacity: std::env::var("RRG_BROADCAST_CAPACITY")
+                .ok()
+                .map(|capacity| {
+                    capacity
+                        .parse()
+                        .unwrap_or_else(|_| panic!("Invalid broadcast capacity: {capacity}"))
+                }),
+
+            request_timeout_seconds: std::env::var("RRG_REQUEST_TIMEOUT_SECONDS")
+                .ok()
+                .map(|timeout| {
+                    timeout
+                        .parse()
+                        .unwrap_or_else(|_| panic!("Invalid request timeout: {timeout}"))
+                })
+                .map(Duration::from_secs),
+
+            sentry_dsn: std::env::var("SENTRY_DSN").ok().map(SecretString::from),
 
             redis_url: std::env::var("REDIS_URL").expect("Missing environment variable REDIS_URL"),
         }
@@ -107,16 +115,19 @@ fn main() -> Result<()> {
         .with(sentry::integrations::tracing::layer())
         .try_init()?;
 
-    let _guard = sentry::init((
-        config.sentry_dsn.expose_secret(),
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            sample_rate: config.error_sample_rate.unwrap_or(1.0),
-            traces_sample_rate: config.trace_sample_rate.unwrap_or(0.1),
-            attach_stacktrace: true,
-            ..Default::default()
-        },
-    ));
+    let _sentry_guard: Option<sentry::ClientInitGuard> = config.sentry_dsn.as_ref().map(|dsn| {
+        tracing::info!("Initializing Sentry client");
+        sentry::init((
+            dsn.expose_secret(),
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                sample_rate: config.error_sample_rate.unwrap_or(1.0),
+                traces_sample_rate: config.trace_sample_rate.unwrap_or(0.1),
+                attach_stacktrace: true,
+                ..Default::default()
+            },
+        ))
+    });
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -245,7 +256,11 @@ async fn run(config: Config) -> Result<()> {
                 .propagate_x_request_id()
                 // Very generous limit for submit requests
                 .layer(RequestBodyLimitLayer::new(4096))
-                .layer(TimeoutLayer::new(Duration::from_secs(30))),
+                .layer(TimeoutLayer::new(
+                    config
+                        .request_timeout_seconds
+                        .unwrap_or(Duration::from_secs(30)),
+                )),
         )
         .with_state(AppState {
             redis,
