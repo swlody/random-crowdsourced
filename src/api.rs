@@ -1,4 +1,7 @@
-use std::time::Duration;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use axum::{
     extract::State,
@@ -132,10 +135,25 @@ async fn get_random(
     let (tx, rx) = tokio::sync::oneshot::channel();
     state.callback_map.lock().unwrap().insert(guid, tx);
 
-    // Remove guid from pending_callbacks on request timeout or cancellation
-    let state = state.clone();
+    // If the request is cancelled or times out, this task will be cancelled
+    // but we still need to remove the new guid from the pending_callbacks list.
+    // Set up a cancellation token that will be triggered on any drop,
+    // and a flag that indicates whether or not we need to remove the guid.
+    let token = tokio_util::sync::CancellationToken::new();
+    let drop_guard = token.clone().drop_guard();
+    let removed = Arc::new(AtomicBool::new(false));
+    let removed_clone = removed.clone();
+
+    // Span a task to remove the guid from the pending_callbacks list
     tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        // Wait for the token to be cancelled by drop
+        token.cancelled().await;
+        // If the guid was already removed from pending callbacks, do nothing.
+        if removed_clone.load(Ordering::Acquire) {
+            return;
+        }
+
+        // Otherwise, remove the guid
         let mut conn = state.redis.get().await.unwrap();
         conn.lrem::<_, _, ()>("pending_callbacks", 1, guid)
             .await
@@ -171,6 +189,11 @@ async fn get_random(
     )
     .await
     .map_err(anyhow::Error::from)?;
+
+    // Mark the guid as removed...
+    removed.store(true, Ordering::Release);
+    // and manually drop the drop_guard to trigger the cancellation token
+    drop(drop_guard);
 
     let random_number = callback_result.expect("Sender unexpectedly dropped");
     tracing::debug!("Returning random number to client: {random_number:?}");
